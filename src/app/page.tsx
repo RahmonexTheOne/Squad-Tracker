@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 // On importe le composant qu'on a créé à l'étape d'avant
 import PodiumCharacter from '@/components/PodiumCharacter';
+import AuthButton from '@/components/AuthButton';
 
 export default function Dashboard() {
   return (
@@ -25,14 +26,9 @@ export default function Dashboard() {
           <NavItem icon={<MonitorPlay />} label="Steam Library" />
         </nav>
 
+        {/* --- AUTH BUTTON SECTION --- */}
         <div className="p-4 border-t border-slate-800">
-          <div className="bg-slate-800/50 rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:bg-slate-800 transition">
-            <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-xs font-bold text-white">ME</div>
-            <div className="hidden lg:block">
-              <p className="text-sm font-medium text-white">My Profile</p>
-              <p className="text-xs text-green-400">Online</p>
-            </div>
-          </div>
+          <AuthButton />
         </div>
       </aside>
 
