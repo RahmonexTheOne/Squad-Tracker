@@ -46,11 +46,11 @@ export default function SettingsPage() {
 
       // VÉRIFICATION DISCORD
       const identities = await supabase.auth.getUserIdentities();
-      const discordIdentity = identities.data?.identities?.find((id: any) => id.provider === 'discord');
-      
-      if (discordIdentity) {
-        setIsDiscordLinked(true);
-        setDiscordHandle(user.user_metadata.full_name || user.user_metadata.custom_claims?.global_name || 'Linked');
+      const discordId = user?.user_metadata?.provider_id; // L'ID unique Discord !
+  
+      if (discordId) {
+        // Ajoute ça dans ton updateProfile ou fait un update direct ici
+        await supabase.from('profiles').update({ discord_uid: discordId }).eq('id', user.id);
       }
 
       // Récupération du profil BDD
@@ -105,11 +105,23 @@ export default function SettingsPage() {
   // 3. FONCTION : SYNC AVATAR
   const syncDiscordData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    const discordAvatar = user?.user_metadata?.avatar_url;
     
-    if (discordAvatar) {
+    // On récupère les infos
+    const discordAvatar = user?.user_metadata?.avatar_url;
+    // L'ID Discord est souvent dans 'provider_id' ou 'sub'
+    const discordId = user?.user_metadata?.provider_id || user?.user_metadata?.sub;
+
+    if (discordAvatar && discordId) {
+      // 1. Mise à jour du formulaire (visuel)
       setFormData(prev => ({ ...prev, avatar_url: discordAvatar }));
-      alert("Avatar synced from Discord!");
+
+      // 2. SAUVEGARDE SILENCIEUSE DE L'ID DANS LA BDD
+      await supabase
+        .from('profiles')
+        .update({ discord_uid: discordId })
+        .eq('id', user.id);
+
+      alert("Avatar synced & Connection established with Discord!");
     } else {
       alert("No Discord data found. Please click 'Connect Discord' first.");
     }
