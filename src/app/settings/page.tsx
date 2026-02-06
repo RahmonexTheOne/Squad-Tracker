@@ -17,7 +17,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
   
-  // NOUVEAU : Pour gérer l'état de la liaison Discord
+  // Pour gérer l'état de la liaison Discord
   const [isDiscordLinked, setIsDiscordLinked] = useState(false);
   const [discordHandle, setDiscordHandle] = useState('');
 
@@ -44,13 +44,12 @@ export default function SettingsPage() {
         return;
       }
 
-      // VÉRIFICATION DISCORD : On regarde si le compte est lié
+      // VÉRIFICATION DISCORD
       const identities = await supabase.auth.getUserIdentities();
       const discordIdentity = identities.data?.identities?.find((id: any) => id.provider === 'discord');
       
       if (discordIdentity) {
         setIsDiscordLinked(true);
-        // On récupère le pseudo Discord depuis les métadonnées
         setDiscordHandle(user.user_metadata.full_name || user.user_metadata.custom_claims?.global_name || 'Linked');
       }
 
@@ -80,15 +79,27 @@ export default function SettingsPage() {
     getProfile();
   }, [router]);
 
-  // 2. FONCTION : LIER LE COMPTE DISCORD
+  // 2. FONCTION : LIER LE COMPTE DISCORD (Nouvel Onglet)
   const linkDiscordAccount = async () => {
-    await supabase.auth.signInWithOAuth({
+    // On demande à Supabase de nous donner l'URL au lieu de rediriger tout seul
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
       options: {
-        redirectTo: window.location.href, // Revient ici après
-        scopes: 'identify' 
+        redirectTo: window.location.href, 
+        scopes: 'identify',
+        skipBrowserRedirect: true // <--- C'est ici que ça se joue !
       }
     });
+
+    if (error) {
+        alert("Erreur lors de la connexion Discord: " + error.message);
+        return;
+    }
+
+    // Si on a bien reçu l'URL, on l'ouvre dans un nouvel onglet
+    if (data?.url) {
+        window.open(data.url, '_blank');
+    }
   };
 
   // 3. FONCTION : SYNC AVATAR
@@ -272,7 +283,7 @@ export default function SettingsPage() {
                 </div>
               </section>
 
-              {/* SECTION 2: COMPTES DE JEUX & RÔLES (Tout est gardé !) */}
+              {/* SECTION 2: COMPTES DE JEUX & RÔLES */}
               <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
                 <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
