@@ -1,4 +1,4 @@
-import { Trophy, ArrowLeft, Shield, Swords, Medal } from 'lucide-react';
+import { Trophy, ArrowLeft, Crown } from 'lucide-react'; // Ajout de Crown ici
 import Link from 'next/link';
 
 export default function LeaderboardPage() {
@@ -56,7 +56,8 @@ export default function LeaderboardPage() {
                                 </div>
                             </td>
                             <td className="p-6 font-bold text-white text-lg flex items-center gap-3">
-                                {player.index === 0 && <Crown size={16} className="text-yellow-500" />}
+                                {/* Correction : utilisation de 'index' au lieu de 'player.index' */}
+                                {index === 0 && <Crown size={16} className="text-yellow-500" />}
                                 {player.name}
                             </td>
                             <td className="p-6">
