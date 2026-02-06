@@ -4,21 +4,23 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { 
   Save, User, Lock, Gamepad2, MonitorPlay, 
-  Swords, Hammer, Trophy, AlertCircle, CheckCircle 
+  Swords, Hammer, Trophy, AlertCircle, CheckCircle,
+  RefreshCcw, Link as LinkIcon 
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-// On n'oublie pas la Sidebar pour la navigation
 import Sidebar from '@/components/Sidebar';
 
 export default function SettingsPage() {
   const router = useRouter();
   
-  // États de chargement et messages
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
+  
+  // NOUVEAU : Pour gérer l'état de la liaison Discord
+  const [isDiscordLinked, setIsDiscordLinked] = useState(false);
+  const [discordHandle, setDiscordHandle] = useState('');
 
-  // Données du formulaire
   const [formData, setFormData] = useState({
     username: '',
     bio: '',
@@ -26,34 +28,40 @@ export default function SettingsPage() {
     riot_id: '',
     steam_id: '',
     minecraft_ign: '',
-    // Rôles spécifiques par jeu
     valo_main_role: 'Flex',
     lol_main_role: 'Fill'
   });
 
-  // État séparé pour le changement de mot de passe
   const [newPassword, setNewPassword] = useState('');
 
-  // 1. Charger les données au démarrage
+  // 1. CHARGEMENT
   useEffect(() => {
     const getProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Si pas connecté, retour au login
       if (!user) {
         router.push('/login');
         return;
       }
 
-      // Récupération du profil dans la base de données
-      const { data, error } = await supabase
+      // VÉRIFICATION DISCORD : On regarde si le compte est lié
+      const identities = await supabase.auth.getUserIdentities();
+      const discordIdentity = identities.data?.identities?.find((id: any) => id.provider === 'discord');
+      
+      if (discordIdentity) {
+        setIsDiscordLinked(true);
+        // On récupère le pseudo Discord depuis les métadonnées
+        setDiscordHandle(user.user_metadata.full_name || user.user_metadata.custom_claims?.global_name || 'Linked');
+      }
+
+      // Récupération du profil BDD
+      const { data } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
 
       if (data) {
-        // Astuce : Si le username est vide en base, on essaie de prendre celui des métadonnées d'inscription
         const fallbackUsername = user.user_metadata?.username || user.user_metadata?.full_name || '';
 
         setFormData({
@@ -72,7 +80,31 @@ export default function SettingsPage() {
     getProfile();
   }, [router]);
 
-  // 2. Fonction de Sauvegarde
+  // 2. FONCTION : LIER LE COMPTE DISCORD
+  const linkDiscordAccount = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'discord',
+      options: {
+        redirectTo: window.location.href, // Revient ici après
+        scopes: 'identify' 
+      }
+    });
+  };
+
+  // 3. FONCTION : SYNC AVATAR
+  const syncDiscordData = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const discordAvatar = user?.user_metadata?.avatar_url;
+    
+    if (discordAvatar) {
+      setFormData(prev => ({ ...prev, avatar_url: discordAvatar }));
+      alert("Avatar synced from Discord!");
+    } else {
+      alert("No Discord data found. Please click 'Connect Discord' first.");
+    }
+  };
+
+  // 4. SAUVEGARDE
   const updateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -82,7 +114,6 @@ export default function SettingsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No user found");
 
-      // Mise à jour de la table 'profiles'
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -100,15 +131,14 @@ export default function SettingsPage() {
 
       if (error) throw error;
 
-      // Si un nouveau mot de passe est entré, on le met à jour
       if (newPassword) {
         const { error: pwdError } = await supabase.auth.updateUser({ password: newPassword });
         if (pwdError) throw pwdError;
       }
 
       setMessage({ type: 'success', text: 'Profil mis à jour avec succès !' });
-      setNewPassword(''); // On vide le champ mot de passe par sécurité
-      router.refresh();   // Rafraîchit la page pour mettre à jour la Sidebar
+      setNewPassword('');
+      router.refresh();
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message });
     } finally {
@@ -121,17 +151,14 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30">
       
-      {/* 1. SIDEBAR (Navigation) */}
       <Sidebar />
 
-      {/* 2. CONTENU PRINCIPAL (Décalé à droite) */}
       <main className="md:ml-20 lg:ml-64 min-h-screen p-6 lg:p-10 pb-24">
       
           <div className="max-w-4xl mx-auto">
             <h1 className="text-3xl font-black text-white mb-2">Profile Settings</h1>
             <p className="text-slate-400 mb-8">Manage your identity and game roles.</p>
 
-            {/* Message de confirmation ou erreur */}
             {message && (
               <div className={`p-4 rounded-xl mb-6 flex items-center gap-3 ${message.type === 'success' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
                 {message.type === 'success' ? <CheckCircle size={20}/> : <AlertCircle size={20}/>}
@@ -158,11 +185,46 @@ export default function SettingsPage() {
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 mt-1 text-white focus:border-indigo-500 outline-none font-bold"
                     />
                   </div>
+
+                  {/* --- BLOC CONNEXION DISCORD --- */}
+                  <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
+                    <label className="text-xs font-bold text-[#5865F2] uppercase mb-2 block">Discord Connection</label>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-[#5865F2] flex items-center justify-center text-white">
+                                <Gamepad2 size={20} />
+                            </div>
+                            <div>
+                                {isDiscordLinked ? (
+                                    <>
+                                        <p className="text-sm font-bold text-white">Account Linked ✅</p>
+                                        <p className="text-xs text-slate-400">{discordHandle}</p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-sm font-bold text-slate-300">Not Connected</p>
+                                        <p className="text-xs text-slate-500">Link Discord to fetch avatar</p>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                        
+                        {!isDiscordLinked && (
+                            <button 
+                                type="button"
+                                onClick={linkDiscordAccount}
+                                className="px-4 py-2 bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold rounded-lg transition flex items-center gap-2"
+                            >
+                                <LinkIcon size={12} /> Connect Discord
+                            </button>
+                        )}
+                    </div>
+                  </div>
                   
+                  {/* --- AVATAR URL (Avec bouton Sync) --- */}
                   <div>
                     <label className="text-xs font-bold text-slate-400 uppercase">Avatar URL</label>
                     <div className="flex gap-4 items-center mt-1">
-                      {/* Prévisualisation de l'image */}
                       <div className="w-12 h-12 rounded-full bg-slate-800 shrink-0 overflow-hidden border border-slate-600">
                         <img 
                             src={formData.avatar_url || '/characters/default.png'} 
@@ -171,14 +233,31 @@ export default function SettingsPage() {
                             onError={(e) => e.currentTarget.src = '/characters/default.png'} 
                         />
                       </div>
-                      <input 
-                        type="text" 
-                        placeholder="https://imgur.com/..."
-                        value={formData.avatar_url}
-                        onChange={(e) => setFormData({...formData, avatar_url: e.target.value})}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white focus:border-indigo-500 outline-none"
-                      />
+                      
+                      <div className="relative flex-1">
+                          <input 
+                            type="text" 
+                            placeholder="https://..."
+                            value={formData.avatar_url}
+                            onChange={(e) => setFormData({...formData, avatar_url: e.target.value})}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 pr-12 text-white focus:border-indigo-500 outline-none"
+                          />
+                          <button 
+                            type="button"
+                            onClick={syncDiscordData}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition border border-slate-700"
+                            title="Import Avatar from Discord"
+                            disabled={!isDiscordLinked}
+                          >
+                            <RefreshCcw size={14} className={!isDiscordLinked ? 'opacity-30' : ''} />
+                          </button>
+                      </div>
                     </div>
+                    {!isDiscordLinked && (
+                        <p className="text-[10px] text-orange-400 mt-2 ml-16 flex items-center gap-1">
+                            <AlertCircle size={10} /> Connect Discord above to enable avatar sync.
+                        </p>
+                    )}
                   </div>
 
                   <div>
@@ -193,7 +272,7 @@ export default function SettingsPage() {
                 </div>
               </section>
 
-              {/* SECTION 2: COMPTES DE JEUX & RÔLES */}
+              {/* SECTION 2: COMPTES DE JEUX & RÔLES (Tout est gardé !) */}
               <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
                 <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
@@ -215,7 +294,6 @@ export default function SettingsPage() {
                         className="w-full bg-transparent border-none p-0 text-white placeholder-slate-600 focus:ring-0 font-mono"
                       />
                     </div>
-                    {/* Rôle Valorant Spécifique */}
                     <div className="w-full md:w-48">
                         <label className="text-[10px] font-bold text-red-400 uppercase mb-1 block">Main Role</label>
                         <select 
@@ -241,11 +319,10 @@ export default function SettingsPage() {
                          type="text" 
                          placeholder="SummonerName#TAG"
                          value={formData.riot_id} // Souvent le même Riot ID
-                         readOnly // Juste pour info visuelle, on utilise Riot ID pour les deux
+                         readOnly
                          className="w-full bg-transparent border-none p-0 text-slate-500 placeholder-slate-600 focus:ring-0 font-mono italic"
                       />
                     </div>
-                    {/* Rôle LoL Spécifique */}
                     <div className="w-full md:w-48">
                         <label className="text-[10px] font-bold text-yellow-500 uppercase mb-1 block">Main Role</label>
                         <select 
@@ -302,7 +379,6 @@ export default function SettingsPage() {
                 <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
                   <Lock className="text-yellow-400" /> Security
                 </h2>
-                
                 <div>
                     <label className="text-xs font-bold text-slate-400 uppercase">Change Password</label>
                     <input 
