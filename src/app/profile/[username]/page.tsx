@@ -3,19 +3,16 @@ import {
   MonitorPlay, Shield, Quote, User 
 } from 'lucide-react';
 import Link from 'next/link';
-// IMPORT IMPORTANT MANQUANT
 import { createClient } from '@supabase/supabase-js';
 
 import CharacterImage from '@/components/CharacterImage';
 import Sidebar from '@/components/Sidebar';
 import { getDiscordStatus } from '@/lib/discordWidget';
 
-// Fix Next.js 15: params is a Promise
 interface PageProps {
   params: Promise<{ username: string }>;
 }
 
-// INITIALISATION SUPABASE (Pour le serveur)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -32,22 +29,19 @@ export default async function ProfilePage({ params }: PageProps) {
     .ilike('username', username)
     .single();
 
-  // Si l'utilisateur n'existe pas, on gère l'erreur (optionnel mais conseillé)
   if (!profile) {
       return <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">User not found</div>;
   }
 
-  // B. On lance le radar SI on a un ID Discord
+  // B. On lance le radar
   let discordStatus = null;
-  // On vérifie que l'ID serveur est bien défini dans les variables d'environnement
   const serverId = process.env.NEXT_PUBLIC_DISCORD_SERVER_ID;
   
-  if (profile?.discord_uid && serverId) {
-      discordStatus = await getDiscordStatus(serverId, profile.discord_uid);
+  if (profile?.username && serverId) {
+      discordStatus = await getDiscordStatus(serverId, profile.username);
   }
 
   // --- CONFIGURATION ---
-  // On utilise l'avatar de la BDD s'il existe, sinon l'image 3D, sinon défaut
   const avatarDisplay = profile.avatar_url || "/characters/default.png";
   const characterPath = `/characters/${username}.png`;
   const fallbackImage = "/characters/default.png"; 
@@ -56,10 +50,8 @@ export default async function ProfilePage({ params }: PageProps) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans pb-20 overflow-x-hidden">
       
-      {/* 1. SIDEBAR */}
       <Sidebar />
 
-      {/* 2. MAIN CONTAINER */}
       <main className="md:ml-20 lg:ml-64 min-h-screen relative">
         
         {/* HERO BANNER */}
@@ -98,6 +90,7 @@ export default async function ProfilePage({ params }: PageProps) {
                             "I don't miss, I just zone them."
                         </p>
 
+                        {/* BIO SECTION */}
                         <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800/60 p-4 rounded-2xl max-w-xl mb-4 relative">
                             <div className="absolute -top-3 left-4 bg-slate-800 text-xs text-slate-400 px-2 py-0.5 rounded flex items-center gap-1">
                                 <User size={10} /> Bio
@@ -105,30 +98,34 @@ export default async function ProfilePage({ params }: PageProps) {
                             <p className="text-slate-400 text-sm leading-relaxed">{userBio}</p>
                         </div>
 
-                        {/* WIDGET DISCORD STATUS */}
-                        <div className="absolute top-4 right-4 flex flex-col items-end gap-2 pointer-events-none">
-                            {/* STATUT EN LIGNE */}
-                            {discordStatus?.status === 'online' && (
-                                <span className="px-3 py-1 bg-green-500/20 text-green-400 border border-green-500/50 rounded-full text-xs font-bold flex items-center gap-2 animate-in fade-in zoom-in duration-300">
-                                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                                    Online
-                                </span>
-                            )}
+                        {/* 🔥 WIDGET DISCORD STATUS (DÉPLACÉ ICI) 🔥 */}
+                        {/* On l'affiche seulement s'il y a un statut actif */}
+                        {(discordStatus?.status === 'online' || discordStatus?.game || discordStatus?.channel_name) && (
+                            <div className="flex flex-wrap items-center gap-3 mb-6">
+                                
+                                {/* STATUT EN LIGNE */}
+                                {discordStatus?.status === 'online' && (
+                                    <span className="px-3 py-1 bg-green-500/10 text-green-400 border border-green-500/30 rounded-lg text-xs font-bold flex items-center gap-2 animate-in fade-in zoom-in duration-300">
+                                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                        Online
+                                    </span>
+                                )}
 
-                            {/* JEU EN COURS */}
-                            {discordStatus?.game && (
-                                <span className="px-3 py-1 bg-slate-800 text-white border border-slate-700 rounded-lg text-xs font-bold flex items-center gap-2 animate-in slide-in-from-right-5 duration-500">
-                                    🎮 Playing {discordStatus.game}
-                                </span>
-                            )}
+                                {/* JEU EN COURS */}
+                                {discordStatus?.game && (
+                                    <span className="px-3 py-1 bg-slate-800 text-white border border-slate-700 rounded-lg text-xs font-bold flex items-center gap-2 animate-in slide-in-from-bottom-2 duration-500">
+                                        🎮 Playing <span className="text-indigo-300">{discordStatus.game}</span>
+                                    </span>
+                                )}
 
-                            {/* SALON VOCAL */}
-                            {discordStatus?.channel_name && (
-                                <span className="px-3 py-1 bg-[#5865F2]/20 text-[#5865F2] border border-[#5865F2]/50 rounded-lg text-xs font-bold flex items-center gap-2 animate-in slide-in-from-right-5 delay-100 duration-500">
-                                    🎙️ In Voice: {discordStatus.channel_name}
-                                </span>
-                            )}
-                        </div>
+                                {/* SALON VOCAL */}
+                                {discordStatus?.channel_name && (
+                                    <span className="px-3 py-1 bg-[#5865F2]/10 text-[#5865F2] border border-[#5865F2]/30 rounded-lg text-xs font-bold flex items-center gap-2 animate-in slide-in-from-bottom-2 delay-100 duration-500">
+                                        🎙️ In Voice: <span className="text-white">{discordStatus.channel_name}</span>
+                                    </span>
+                                )}
+                            </div>
+                        )}
                         
                         <div className="flex flex-wrap gap-2">
                             {profile.riot_id && <Badge icon={<Crosshair size={14}/>} label={profile.riot_id} color="indigo" />}
@@ -193,7 +190,6 @@ export default async function ProfilePage({ params }: PageProps) {
                         <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500"><Gamepad2 size={24} /></div>
                         <h2 className="text-xl font-bold text-white">Steam</h2>
                     </div>
-                    {/* Ici on pourrait fetcher les vraies infos Steam si on avait l'API */}
                     <div className="bg-slate-950/80 rounded-xl p-3 flex items-center gap-4 border border-slate-800/80">
                         <div className="w-12 h-12 bg-blue-900/20 rounded-lg flex items-center justify-center text-blue-400">
                             <Swords size={20} />
@@ -212,7 +208,7 @@ export default async function ProfilePage({ params }: PageProps) {
   );
 }
 
-// --- SUB COMPONENTS (Helpers) ---
+// --- SUB COMPONENTS ---
 
 function Badge({ icon, label, color }: any) {
     const colors: any = { indigo: 'bg-[#5865F2]/10 text-[#5865F2] border-[#5865F2]/20', blue: 'bg-blue-500/10 text-blue-400 border-blue-500/20' };
