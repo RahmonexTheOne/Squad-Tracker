@@ -2,9 +2,10 @@ import {
   Users, Trophy, Swords, Gamepad2, Skull, Bell, Search, Menu,
   Activity, MonitorPlay, Crown, Mic
 } from 'lucide-react';
-// On importe le composant qu'on a créé à l'étape d'avant
-import PodiumCharacter from '@/components/PodiumCharacter';
+// IMPORT THE AUTH BUTTON
 import AuthButton from '@/components/AuthButton';
+import PodiumCharacter from '@/components/PodiumCharacter';
+import Link from 'next/link';
 
 export default function Dashboard() {
   return (
@@ -16,7 +17,8 @@ export default function Dashboard() {
           <div className="w-8 h-8 bg-gradient-to-tr from-indigo-500 to-purple-500 rounded-lg flex items-center justify-center shrink-0">
             <Gamepad2 className="text-white w-5 h-5" />
           </div>
-          <span className="font-bold text-xl text-white tracking-tight hidden lg:block">SQUAD<span className="text-indigo-500">HQ</span></span>
+          {/* RENAMED: SQUAD TRACKER */}
+          <span className="font-bold text-xl text-white tracking-tight hidden lg:block">SQUAD <span className="text-indigo-500">TRACKER</span></span>
         </div>
 
         <nav className="flex-1 px-4 space-y-2 mt-4">
@@ -26,10 +28,15 @@ export default function Dashboard() {
           <NavItem icon={<MonitorPlay />} label="Steam Library" />
         </nav>
 
-        {/* --- AUTH BUTTON SECTION --- */}
-        <div className="p-4 border-t border-slate-800">
-          <AuthButton />
-        </div>
+        {/* AJOUTE CE LIEN ICI : */}
+          <div className="h-px bg-slate-800 my-2 mx-4"></div> {/* Petit séparateur */}
+          
+          <Link href="/settings">
+             <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer text-slate-400 hover:bg-slate-800 hover:text-white transition-all">
+                <Users size={20} /> 
+                <span className="text-sm font-medium hidden lg:block">Profile Settings</span>
+             </div>
+          </Link>
       </aside>
 
       {/* --- MAIN CONTENT --- */}
@@ -43,7 +50,7 @@ export default function Dashboard() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <input 
                 type="text" 
-                placeholder="Search..." 
+                placeholder="Search player..." 
                 className="bg-slate-900 border border-slate-800 rounded-full py-1.5 pl-10 pr-4 text-sm focus:outline-none focus:border-indigo-500 transition w-64 text-white"
               />
             </div>
@@ -59,11 +66,11 @@ export default function Dashboard() {
         {/* CONTENT */}
         <div className="p-6 lg:p-10 max-w-7xl mx-auto space-y-12">
           
-          {/* WELCOME */}
+          {/* WELCOME RENAMED */}
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-white mb-1">Operations HQ</h1>
-              <p className="text-slate-400">Welcome back, Soldier.</p>
+              <h1 className="text-3xl font-bold text-white mb-1">Squad Dashboard</h1>
+              <p className="text-slate-400">Overview of the 20 legends (and the griefers).</p>
             </div>
             <span className="px-3 py-1 bg-green-500/10 text-green-400 border border-green-500/20 rounded-full text-xs font-medium flex items-center gap-2 w-fit">
                 <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
@@ -130,10 +137,9 @@ export default function Dashboard() {
              </div>
           </div>
 
-          {/* --- SECTION 2: BENTO GRID (Discord & Stats) --- */}
+          {/* --- SECTION 2: BENTO GRID --- */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             
-            {/* DISCORD */}
             <div className="col-span-1 md:col-span-2 bg-[#5865F2]/10 border border-[#5865F2]/30 rounded-2xl p-6 relative overflow-hidden">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2 bg-[#5865F2] rounded-lg"><Users className="text-white w-5 h-5" /></div>
@@ -145,7 +151,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* LEAGUE STATS */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 hover:border-yellow-500/50 transition">
                 <div className="flex justify-between mb-4">
                   <div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500"><Trophy size={20} /></div>
@@ -155,7 +160,6 @@ export default function Dashboard() {
                 <p className="text-xl font-bold text-white">65% Win</p>
             </div>
 
-            {/* FEEDER OF THE WEEK */}
             <div className="bg-pink-900/10 border border-pink-500/30 rounded-2xl p-6 flex flex-col items-center text-center justify-center">
                <div className="p-3 bg-pink-500/20 rounded-full mb-2"><Skull className="text-pink-500 w-6 h-6" /></div>
                <h3 className="text-pink-400 font-bold text-sm mb-1">FEEDER ALERT</h3>
@@ -184,12 +188,10 @@ function GrinderCard({ rank, name, games, title, titleColor, charImg }: any) {
     const colors: any = { blue: 'text-blue-400 bg-blue-500/10 border-blue-500/20', purple: 'text-purple-400 bg-purple-500/10 border-purple-500/20' };
     return (
         <div className="bg-slate-900/80 border border-slate-800 hover:border-slate-600 rounded-2xl p-4 flex flex-col items-center text-center transition hover:-translate-y-1 relative overflow-hidden group">
-            {/* Petit halo derrière le perso */}
             <div className="absolute top-10 left-1/2 -translate-x-1/2 w-20 h-20 bg-white/5 blur-xl rounded-full group-hover:bg-white/10 transition"></div>
             
             <div className="text-slate-600 font-black text-xl mb-1">#{rank}</div>
             
-            {/* 3D CHAR FOR RANK 2 & 3 */}
             <div className="h-32 w-full flex justify-center -my-2 relative z-10">
                 <PodiumCharacter path={charImg} alt={name} />
             </div>
@@ -206,7 +208,6 @@ function MiniGrinderRow({ rank, name, games, title }: any) {
         <div className="bg-slate-900/30 border border-slate-800/50 rounded-xl p-3 flex items-center justify-between hover:bg-slate-800 transition px-4">
             <div className="flex items-center gap-4">
                 <span className="text-slate-600 font-bold font-mono text-lg">#{rank}</span>
-                {/* Avatar rond simple pour le 4 et 5 */}
                 <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center font-bold text-slate-400">{name[0]}</div>
                 <div>
                     <div className="text-sm font-bold text-slate-300">{name}</div>

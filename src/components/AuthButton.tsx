@@ -13,23 +13,16 @@ export default function AuthButton() {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user || null);
-      
       if (session?.user) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
+        const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
         setProfile(data);
       }
     };
     checkUser();
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null);
       if(!session) setProfile(null);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -38,7 +31,6 @@ export default function AuthButton() {
     window.location.reload();
   };
 
-  // CASE 1: Connected
   if (user && profile) {
     return (
       <div className="flex flex-col gap-2">
@@ -51,7 +43,6 @@ export default function AuthButton() {
             <p className="text-[10px] text-green-400 font-mono">ONLINE</p>
           </div>
         </div>
-        
         <button onClick={handleLogout} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-2 pl-2 mt-1">
             <LogOut size={12} /> Logout
         </button>
@@ -59,7 +50,6 @@ export default function AuthButton() {
     );
   }
 
-  // CASE 2: Not Connected (Login Button)
   return (
     <Link href="/login" className="w-full block">
         <div className="w-full bg-indigo-600 hover:bg-indigo-500 text-white p-3 rounded-xl flex items-center gap-3 transition font-bold shadow-lg shadow-indigo-500/20 cursor-pointer">
@@ -67,6 +57,7 @@ export default function AuthButton() {
             <LogIn size={18} />
         </div>
         <div className="hidden lg:block text-left">
+            {/* RENAMED HERE */}
             <p className="text-xs text-white/80">Member Access</p>
             <p className="text-sm">Log In</p>
         </div>
