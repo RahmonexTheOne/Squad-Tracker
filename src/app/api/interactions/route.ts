@@ -1,39 +1,39 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { verifyKey } from 'discord-interactions';
 
-export async function POST(req: NextRequest) {
-  // 1. Récupération des données brutes
-  const signature = req.headers.get('X-Signature-Ed25519') ?? '';
-  const timestamp = req.headers.get('X-Signature-Timestamp') ?? '';
+export async function POST(req: Request) {
+  // 1. On récupère les headers et le body
+  const signature = req.headers.get('X-Signature-Ed25519');
+  const timestamp = req.headers.get('X-Signature-Timestamp');
   const body = await req.text();
 
-  // 2. Vérification de la clé (Log pour être sûr)
-  // Si la clé est fausse, verifyKey renvoie false
+  // 2. Validation basique des inputs
+  if (!signature || !timestamp || !body || !process.env.DISCORD_PUBLIC_KEY) {
+    return new Response('Missing request data', { status: 401 });
+  }
+
+  // 3. Vérification cryptographique
   const isValidRequest = verifyKey(
     body,
     signature,
     timestamp,
-    process.env.DISCORD_PUBLIC_KEY!
+    process.env.DISCORD_PUBLIC_KEY
   );
 
   if (!isValidRequest) {
-    console.error('❌ Signature Invalide ! Vérifie ta DISCORD_PUBLIC_KEY sur Vercel.');
-    return new NextResponse('Bad request signature', { status: 401 });
+    return new Response('Bad request signature', { status: 401 });
   }
 
-  // 3. Parsing du JSON
+  // 4. Parsing JSON
   const interaction = JSON.parse(body);
 
   // --- LE PING (Validation URL) ---
   if (interaction.type === 1) {
-    console.log('✅ PING reçu de Discord. Envoi du PONG (type: 1)...');
+    console.log('✅ PING reçu. Réponse immédiate.');
     
-    // METHODE EXPLICITE : On force le JSON et le status 200
-    return new NextResponse(JSON.stringify({ type: 1 }), {
+    // On utilise "Response" (standard Web) et non "NextResponse"
+    return new Response(JSON.stringify({ type: 1 }), {
       status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' }
     });
   }
 
@@ -47,8 +47,7 @@ export async function POST(req: NextRequest) {
       const userId = discordUser.id;
       const baseUrl = 'https://squad-tracker-snowy.vercel.app'; 
 
-      // Réponse explicite aussi ici
-      return new NextResponse(JSON.stringify({
+      return new Response(JSON.stringify({
         type: 4,
         data: {
           content: `Hey <@${userId}> ! 🫡\nVoici ton dossier d'agent : ${baseUrl}/profile/${username}`
@@ -60,8 +59,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Catch-all
-  return new NextResponse(JSON.stringify({ error: 'Unknown command' }), { 
+  return new Response(JSON.stringify({ error: 'Unknown command' }), { 
     status: 400,
     headers: { 'Content-Type': 'application/json' }
   });
