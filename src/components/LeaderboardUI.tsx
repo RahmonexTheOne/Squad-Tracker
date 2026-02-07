@@ -57,7 +57,6 @@ export default function LeaderboardUI({ squadName, players }: { squadName: strin
         </div>
 
         <div className="p-6 lg:p-12 max-w-6xl mx-auto mt-16 relative z-0">
-            
             {activeTab === 'lol' ? (
                 <div className="bg-slate-900/30 border border-slate-800 border-dashed rounded-3xl p-32 text-center animate-in fade-in zoom-in duration-500">
                     <Shield size={80} className="mx-auto mb-8 text-slate-800"/>
@@ -87,10 +86,10 @@ export default function LeaderboardUI({ squadName, players }: { squadName: strin
   );
 }
 
-// --- CARTE JOUEUR ---
+// --- LEADERBOARD CARD ---
 function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
     
-    // --- 🔴 FONCTION DE CALCUL SÉCURISÉE ---
+    // --- 1. LOGIQUE SÉCURISÉE (On garde ça pour éviter les crashs) ---
     const calculateStats = () => {
         const data = player.fullStats;
         if (!data || !data.matches || data.matches.length === 0) return null;
@@ -100,12 +99,11 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
         const lastGames: string[] = [];
         const agentsPlayed: Record<string, { count: number, img: string }> = {};
         
-        // Sécurité sur le Riot ID
-        if (!player.riot_id) return null;
-        const [myName] = player.riot_id.split('#');
+        // Sécurité Riot ID
+        const riotIdString = player.riot_id || player.username || "";
+        const [myName] = riotIdString.split('#');
 
         data.matches.forEach((match: any) => {
-            // On cherche le joueur dans le match
             const p = match.players.all_players.find((pl: any) => 
                 pl.name && pl.name.toLowerCase() === myName.toLowerCase()
             );
@@ -118,17 +116,13 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
                 totalShots += shots;
                 totalHeadshots += p.stats.headshots;
 
-                // --- 🛡️ CORRECTION CRASH "has_won" ---
-                // 1. On récupère la team
+                // Sécurité Teams / Deathmatch
                 const myTeam = p.team ? p.team.toLowerCase() : 'blue';
-                
-                // 2. On vérifie si c'est un Deathmatch ou si les teams existent
                 let hasWon = false;
+
                 if (match.metadata.mode === 'Deathmatch') {
-                    // En DM, on considère win si Top 1 (ou Top 3 selon ta pref)
                     hasWon = p.stats.rank === 1; 
                 } else if (match.teams && match.teams[myTeam]) {
-                    // En standard, on lit la propriété de l'équipe
                     hasWon = match.teams[myTeam].has_won;
                 }
                 
@@ -143,7 +137,10 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
             }
         });
 
-        const matchesCount = data.matches.length;
+        // Si aucun match valide n'a été trouvé
+        if (lastGames.length === 0) return null;
+
+        const matchesCount = lastGames.length;
         const sortedAgents = Object.values(agentsPlayed).sort((a, b) => b.count - a.count);
 
         return {
@@ -161,7 +158,7 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
 
     const stats = calculateStats();
     
-    // Couleurs
+    // Couleurs de rang
     const rankColor = rank === 1 ? 'text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]' : 
                       rank === 2 ? 'text-slate-300 drop-shadow-[0_0_10px_rgba(203,213,225,0.5)]' : 
                       rank === 3 ? 'text-amber-600 drop-shadow-[0_0_10px_rgba(217,119,6,0.5)]' : 'text-slate-600';
@@ -176,14 +173,15 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
                 ${isExpanded ? 'z-30 scale-[1.01]' : 'hover:scale-[1.01] z-10'}
             `}
         >
-            {/* FOND DE CARTE */}
+            {/* 2. STYLE VISUEL RESTAURÉ (Celui que tu aimais) */}
             <div className={`
                 relative bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl shadow-2xl overflow-hidden
                 ${rank === 1 ? 'border-yellow-500/30 bg-gradient-to-r from-yellow-900/10 to-slate-900' : ''}
                 ${isExpanded ? 'ring-1 ring-indigo-500/50' : ''}
             `}>
                 
-                {/* CONTENU */}
+                {/* --- CONTENU --- */}
+                {/* RESTAURÉ : lg:pr-32 (pas 48) */}
                 <div className={`relative z-20 transition-all duration-500 ${isExpanded ? 'lg:pr-32' : 'pr-0'}`}>
                     
                     {/* HEADER */}
@@ -211,9 +209,9 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
                                         <span className="text-xs bg-black/40 text-slate-400 px-3 py-1 rounded-md border border-slate-800 font-mono tracking-wider">
                                             {player.riot_id || 'NO ID'}
                                         </span>
-                                        {stats?.peakRank && stats.peakRank !== "Unknown" && (
+                                        {(stats?.peakRank || player.peak_rank) && (
                                             <span className="text-[10px] text-yellow-500 font-bold flex items-center gap-1 bg-yellow-500/5 px-2 py-1 rounded border border-yellow-500/20">
-                                                <Star size={10} fill="currentColor"/> PEAK: {stats.peakRank.toUpperCase()}
+                                                <Star size={10} fill="currentColor"/> PEAK: {(stats?.peakRank || player.peak_rank || "Unknown").toUpperCase()}
                                             </span>
                                         )}
                                     </div>
@@ -221,7 +219,7 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
                             </div>
                         </div>
 
-                        {/* RANG */}
+                        {/* RANG VALORANT */}
                         <div className="flex items-center gap-8 relative z-30">
                             <div className="text-right hidden md:block">
                                 <p className={`text-2xl font-black uppercase italic ${
@@ -232,7 +230,9 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
                                 </p>
                                 <p className="text-sm font-bold text-indigo-400">{player.valo_rr} RR</p>
                             </div>
-                            {stats?.rankImg && <img src={stats.rankImg} className="w-14 h-14 drop-shadow-lg"/>}
+                            {(player.rank_img || stats?.rankImg) && (
+                                <img src={player.rank_img || stats?.rankImg} className="w-14 h-14 drop-shadow-lg"/>
+                            )}
                         </div>
                     </div>
 
@@ -265,12 +265,15 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
                                 </div>
                             </div>
                         ) : (
-                            <div className="text-center text-slate-500 py-4 border-t border-white/5 pt-6">No match data available.</div>
+                            <div className="text-center text-slate-500 py-4 border-t border-white/5 pt-6">
+                                No match data available. <br/>
+                                <span className="text-xs opacity-50">(API Limit or No Games Played)</span>
+                            </div>
                         )}
                     </div>
                 </div>
 
-                {/* IMAGE INTERNE (Visible quand FERMÉ) */}
+                {/* 3. IMAGE INTERNE (RESTAURÉE : right-[-20px] bottom-[-20px]) */}
                 <div className={`
                     absolute right-[-20px] bottom-[-20px] h-[120%] w-auto z-10 pointer-events-none transition-all duration-500 ease-out
                     ${isExpanded ? 'opacity-0 translate-x-20' : 'opacity-30 md:opacity-100 translate-x-0'}
@@ -287,7 +290,7 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
 
             </div>
 
-            {/* IMAGE EXTERNE (Visible quand OUVERT) */}
+            {/* 4. IMAGE EXTERNE (RESTAURÉE : -right-24 bottom-0 h-72) */}
             <div className={`
                 absolute -right-20 md:-right-24 bottom-0 z-40 pointer-events-none transition-all duration-500 ease-out
                 ${isExpanded 
