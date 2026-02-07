@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Activity, Trophy, Swords, Shield, Gamepad2, 
   Settings, Search, LogOut 
@@ -20,9 +20,14 @@ export default function Sidebar() {
   
   // --- STATE ---
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]); // Résultats de la recherche
+  const [isSearching, setIsSearching] = useState(false); // Pour le loading
   const [userProfile, setUserProfile] = useState<any>(null);
+  
+  // Pour fermer le dropdown si on clique ailleurs
+  const searchContainerRef = useRef<HTMLDivElement>(null);
 
-  // --- FETCH USER DATA ---
+  // --- 1. FETCH USER CONNECTÉ ---
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -32,27 +37,73 @@ export default function Sidebar() {
           .select('username, avatar_url')
           .eq('id', user.id)
           .single();
-        
-        if (profile) {
-            setUserProfile(profile);
-        }
+        if (profile) setUserProfile(profile);
       }
     };
     getUser();
   }, [supabase]);
 
-  // --- ACTIONS ---
-  const handleSearch = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && searchQuery.trim().length > 0) {
-      router.push(`/profile/${searchQuery}`);
-      setSearchQuery('');
+  // --- 2. RECHERCHE EN DIRECT (Debounce) ---
+  useEffect(() => {
+    const searchUsers = async () => {
+      if (searchQuery.trim().length < 2) {
+        setSearchResults([]);
+        return;
+      }
+
+      setIsSearching(true);
+      const { data } = await supabase
+        .from('profiles')
+        .select('username, avatar_url, riot_id')
+        .ilike('username', `%${searchQuery}%`) // Recherche insensible à la casse
+        .limit(5); // Max 5 résultats
+      
+      setSearchResults(data || []);
+      setIsSearching(false);
+    };
+
+    // On attend 300ms après la frappe pour éviter trop de requêtes
+    const timeoutId = setTimeout(searchUsers, 300);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, supabase]);
+
+  // --- 3. ACTIONS ---
+  
+  // Touche Entrée : Va sur le premier résultat si dispo
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      if (searchResults.length > 0) {
+        // Redirige vers le premier résultat trouvé
+        router.push(`/profile/${searchResults[0].username}`);
+        setSearchQuery('');
+        setSearchResults([]);
+      } else {
+        // Optionnel : Empêcher la recherche si rien n'est trouvé
+        // alert("No agent found.");
+      }
     }
+  };
+
+  const handleSelectUser = () => {
+    setSearchQuery('');
+    setSearchResults([]);
   };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    router.refresh(); // Rafraîchit la page pour rediriger vers le login si nécessaire
+    router.refresh();
   };
+
+  // Fermer les résultats si on clique dehors
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setSearchResults([]);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   return (
     <aside className="fixed left-0 top-0 h-full w-20 lg:w-64 bg-slate-900/50 backdrop-blur-xl border-r border-slate-800 flex flex-col hidden md:flex z-50">
@@ -67,8 +118,8 @@ export default function Sidebar() {
           </span>
         </div>
 
-        {/* --- SEARCH BAR --- */}
-        <div className="px-4 mb-4">
+        {/* --- SEARCH BAR INTELLIGENTE --- */}
+        <div className="px-4 mb-4 relative" ref={searchContainerRef}>
             <div className="relative group">
                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 pointer-events-none">
                     <Search size={18} />
@@ -80,13 +131,53 @@ export default function Sidebar() {
                     className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-sm rounded-lg py-2.5 pl-10 pr-3 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all hidden lg:block placeholder:text-slate-600"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={handleSearch}
+                    onKeyDown={handleKeyDown}
                 />
+
+                {/* Loading Indicator (Petit spinner à droite) */}
+                {isSearching && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden lg:block">
+                        <div className="w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                )}
                 
+                {/* Icone Mobile */}
                 <div className="lg:hidden w-10 h-10 flex items-center justify-center bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-700 transition">
                     <Search size={18} className="text-slate-400"/>
                 </div>
             </div>
+
+            {/* --- LISTE DÉROULANTE DES RÉSULTATS --- */}
+            {searchResults.length > 0 && searchQuery.length >= 2 && (
+                <div className="absolute top-full left-4 right-4 bg-slate-900 border border-slate-700 rounded-xl mt-2 shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                    {searchResults.map((user) => (
+                        <Link 
+                            key={user.username} 
+                            href={`/profile/${user.username}`}
+                            onClick={handleSelectUser}
+                        >
+                            <div className="flex items-center gap-3 p-3 hover:bg-slate-800 cursor-pointer transition border-b border-slate-800/50 last:border-0">
+                                <img 
+                                    src={user.avatar_url || '/characters/default.png'} 
+                                    className="w-8 h-8 rounded-full object-cover border border-slate-600"
+                                    alt={user.username}
+                                />
+                                <div className="overflow-hidden">
+                                    <p className="text-sm font-bold text-white truncate">{user.username}</p>
+                                    {user.riot_id && <p className="text-[10px] text-slate-500 truncate">{user.riot_id}</p>}
+                                </div>
+                            </div>
+                        </Link>
+                    ))}
+                </div>
+            )}
+            
+            {/* MESSAGE "AUCUN RÉSULTAT" */}
+            {!isSearching && searchQuery.length >= 2 && searchResults.length === 0 && (
+                <div className="absolute top-full left-4 right-4 bg-slate-900 border border-slate-700 rounded-xl mt-2 p-3 text-center z-50 shadow-xl">
+                    <p className="text-xs text-slate-500">No agent found.</p>
+                </div>
+            )}
         </div>
 
         {/* --- NAVIGATION --- */}
@@ -101,7 +192,7 @@ export default function Sidebar() {
           <NavItem href="/settings" icon={<Settings />} label="Settings" active={pathname === '/settings'} />
         </nav>
 
-        {/* --- USER PROFILE SECTION (CLEAN) --- */}
+        {/* --- USER PROFILE SECTION --- */}
         <div className="p-4 border-t border-slate-800 flex items-center gap-2">
             {userProfile ? (
                 <Link href={`/profile/${userProfile.username}`} className="flex-1 min-w-0">
@@ -124,7 +215,6 @@ export default function Sidebar() {
                     </div>
                 </Link>
             ) : (
-               // Loading state
                <div className="flex-1 flex items-center gap-3 p-2 animate-pulse">
                    <div className="w-10 h-10 rounded-full bg-slate-800"></div>
                    <div className="hidden lg:block space-y-2">
@@ -134,7 +224,7 @@ export default function Sidebar() {
                </div>
             )}
 
-            {/* BOUTON DE DECONNEXION */}
+            {/* Logout */}
             <button 
                 onClick={handleSignOut}
                 className="p-2.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition border border-transparent hover:border-red-500/20"

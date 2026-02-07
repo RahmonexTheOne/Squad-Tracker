@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Crosshair, ChevronDown, ChevronUp, Skull, Trophy, Star, Activity } from 'lucide-react';
 
 interface ValorantCardProps {
@@ -12,19 +12,20 @@ export default function ValorantCard({ riotId, data }: ValorantCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
 
-  // --- CALCULS DES STATS ---
-  const calculateStats = () => {
+  // --- CALCULS DES STATS (SÉCURISÉ) ---
+  const stats = useMemo(() => {
     if (!data || !data.matches || data.matches.length === 0) return null;
 
     let totalKills = 0, totalDeaths = 0, totalWins = 0, totalShots = 0, totalHeadshots = 0, totalScore = 0;
     const lastGames: string[] = [];
     const agentsPlayed: Record<string, { count: number, img: string }> = {};
 
-    const [myName] = riotId?.split('#') || ["", ""];
+    const [name] = (riotId || "").split('#');
 
     data.matches.forEach((match: any) => {
+      // 1. Trouver le joueur (insensible à la casse)
       const player = match.players.all_players.find((p: any) => 
-        p.name.toLowerCase() === myName.toLowerCase()
+        p.name && p.name.toLowerCase() === name.toLowerCase()
       );
 
       if (player) {
@@ -36,10 +37,20 @@ export default function ValorantCard({ riotId, data }: ValorantCardProps) {
         totalShots += shots;
         totalHeadshots += player.stats.headshots;
 
-        const myTeam = player.team.toLowerCase();
-        const hasWon = match.teams[myTeam].has_won;
-        if (hasWon) totalWins++;
-        lastGames.push(hasWon ? 'W' : 'L');
+        // --- 🛡️ CORRECTION CRASH HAS_WON ---
+        const myTeam = player.team ? player.team.toLowerCase() : 'blue';
+        let isWin = false;
+
+        if (match.metadata.mode === 'Deathmatch') {
+            // En Deathmatch, pas d'équipes. Win si Top 1.
+            isWin = player.stats.rank === 1;
+        } else if (match.teams && match.teams[myTeam]) {
+            // Mode normal (Unrated, Compétitif, etc.)
+            isWin = match.teams[myTeam].has_won;
+        }
+        
+        if (isWin) totalWins++;
+        lastGames.push(isWin ? 'W' : 'L');
 
         if (player.assets.agent.small) {
           const img = player.assets.agent.small;
@@ -64,7 +75,7 @@ export default function ValorantCard({ riotId, data }: ValorantCardProps) {
     let peakSeason = "";
     if (data.mmr_life && data.mmr_life.highest_rank) {
         peakRank = data.mmr_life.highest_rank.patched_tier;
-        peakSeason = data.mmr_life.highest_rank.season; // ex: "e5a3"
+        peakSeason = data.mmr_life.highest_rank.season;
     }
 
     // Account Level
@@ -75,13 +86,15 @@ export default function ValorantCard({ riotId, data }: ValorantCardProps) {
     const sortedAgents = Object.values(agentsPlayed).sort((a, b) => b.count - a.count);
     const mainAgentImg = sortedAgents.length > 0 ? sortedAgents[0].img : null;
 
-    const matchesCount = data.matches.length;
+    const matchesCount = lastGames.length; // Utiliser lastGames pour le compte exact
+
+    if (matchesCount === 0) return null;
 
     return {
       kd: (totalDeaths > 0 ? (totalKills / totalDeaths) : totalKills).toFixed(2),
       winRate: ((totalWins / matchesCount) * 100).toFixed(0),
       hs: (totalShots > 0 ? ((totalHeadshots / totalShots) * 100) : 0).toFixed(1),
-      avgScore: (totalScore / matchesCount).toFixed(0), // ACS Moyen
+      avgScore: (totalScore / matchesCount).toFixed(0),
       lastGames,
       rank,
       rr,
@@ -92,12 +105,11 @@ export default function ValorantCard({ riotId, data }: ValorantCardProps) {
       cardImg,
       mainAgentImg
     };
-  };
+  }, [data, riotId]);
 
-  const stats = calculateStats();
-  const [myName] = riotId?.split('#') || ["", ""];
+  const [myName] = (riotId || "").split('#');
 
-  if (!riotId || !data) {
+  if (!riotId || !data || !stats) {
     return (
       <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-8 text-center text-slate-500">
          <Crosshair size={32} className="mx-auto mb-2 opacity-50"/>
@@ -108,15 +120,26 @@ export default function ValorantCard({ riotId, data }: ValorantCardProps) {
 
   // --- RENDER MATCH ---
   const renderMatchDetail = (match: any) => {
-    const player = match.players.all_players.find((p: any) => p.name.toLowerCase() === myName.toLowerCase());
+    const player = match.players.all_players.find((p: any) => p.name && p.name.toLowerCase() === myName.toLowerCase());
     if (!player) return null;
 
-    const myTeam = player.team.toLowerCase();
-    const isWin = match.teams[myTeam].has_won;
-    const score = `${match.teams[myTeam].rounds_won} - ${match.teams[myTeam].rounds_lost}`;
+    // 🛡️ SÉCURISATION DU RENDU MATCH
+    const myTeam = player.team ? player.team.toLowerCase() : 'blue';
+    const isDeathmatch = match.metadata.mode === 'Deathmatch';
+    
+    let isWin = false;
+    let score = "N/A";
+
+    if (isDeathmatch) {
+        isWin = player.stats.rank === 1;
+        score = `Rank #${player.stats.rank}`;
+    } else if (match.teams && match.teams[myTeam]) {
+        isWin = match.teams[myTeam].has_won;
+        score = `${match.teams[myTeam].rounds_won} - ${match.teams[myTeam].rounds_lost}`;
+    }
+
     const kda = `${player.stats.kills} / ${player.stats.deaths} / ${player.stats.assists}`;
     
-    // Précision
     const totalHits = player.stats.headshots + player.stats.bodyshots + player.stats.legshots;
     const hsP = totalHits > 0 ? Math.round((player.stats.headshots / totalHits) * 100) : 0;
     const bsP = totalHits > 0 ? Math.round((player.stats.bodyshots / totalHits) * 100) : 0;
@@ -181,9 +204,9 @@ export default function ValorantCard({ riotId, data }: ValorantCardProps) {
     `}>
       
       {/* --- BANNER HEADER --- */}
-      {stats!.cardImg && (
+      {stats.cardImg && (
         <div className="absolute top-0 left-0 w-full h-32 opacity-20 z-0">
-             <img src={stats!.cardImg} className="w-full h-full object-cover" alt="Player Card" />
+             <img src={stats.cardImg} className="w-full h-full object-cover" alt="Player Card" />
              <div className="absolute inset-0 bg-gradient-to-b from-transparent to-slate-900"></div>
         </div>
       )}
@@ -195,7 +218,7 @@ export default function ValorantCard({ riotId, data }: ValorantCardProps) {
             <div>
               <h2 className="text-2xl font-black text-white italic tracking-wide">VALORANT</h2>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs font-bold px-2 py-0.5 bg-slate-800 text-slate-300 rounded uppercase">Level {stats!.accountLevel}</span>
+                <span className="text-xs font-bold px-2 py-0.5 bg-slate-800 text-slate-300 rounded uppercase">Level {stats.accountLevel}</span>
                 <span className="text-xs text-slate-500">{isExpanded ? 'Detailed Report' : 'Last 10 Matches'}</span>
               </div>
             </div>
@@ -203,46 +226,46 @@ export default function ValorantCard({ riotId, data }: ValorantCardProps) {
           
           {/* RANK DISPLAY */}
           <div className="text-right flex items-center gap-3">
-            {stats!.rankImg && <img src={stats!.rankImg} className="w-12 h-12 drop-shadow-lg" alt="Rank"/>}
+            {stats.rankImg && <img src={stats.rankImg} className="w-12 h-12 drop-shadow-lg" alt="Rank"/>}
             <div>
-              <span className="text-red-500 font-mono font-black text-2xl block leading-none">{stats!.rank.toUpperCase()}</span>
-              <span className="text-xs text-slate-400 font-bold">{stats!.rr} RR</span>
+              <span className="text-red-500 font-mono font-black text-2xl block leading-none">{stats.rank.toUpperCase()}</span>
+              <span className="text-xs text-slate-400 font-bold">{stats.rr} RR</span>
             </div>
           </div>
         </div>
 
-        {/* --- SECTION PEAK RANK (NOUVEAU) --- */}
+        {/* --- SECTION PEAK RANK --- */}
         <div className="mb-6 bg-white/5 border border-white/5 rounded-2xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
                 <div className="p-2 bg-yellow-500/20 rounded-lg text-yellow-500"><Trophy size={18}/></div>
                 <div>
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Peak Rank</p>
-                    <p className="text-white font-bold">{stats!.peakRank}</p>
+                    <p className="text-white font-bold">{stats.peakRank}</p>
                 </div>
             </div>
             <div className="text-right">
                  <p className="text-xs text-slate-500">Season</p>
-                 <p className="text-slate-300 font-mono text-sm">{stats!.peakSeason.toUpperCase()}</p>
+                 <p className="text-slate-300 font-mono text-sm">{stats.peakSeason ? stats.peakSeason.toUpperCase() : 'N/A'}</p>
             </div>
         </div>
 
         {/* --- STATS GRID --- */}
         <div className={`grid gap-3 ${isExpanded ? 'grid-cols-2 md:grid-cols-4 mb-8' : 'grid-cols-2'}`}>
-            <StatRow label="K/D Ratio" value={stats!.kd} good={parseFloat(stats!.kd) > 1} bad={parseFloat(stats!.kd) < 0.9} />
-            <StatRow label="Win Rate" value={`${stats!.winRate}%`} good={parseInt(stats!.winRate) > 50} bad={parseInt(stats!.winRate) < 45} />
-            <StatRow label="Headshot" value={`${stats!.hs}%`} icon={<Crosshair size={12}/>} />
-            <StatRow label="Avg Score" value={stats!.avgScore} icon={<Activity size={12}/>} />
+            <StatRow label="K/D Ratio" value={stats.kd} good={parseFloat(stats.kd) > 1} bad={parseFloat(stats.kd) < 0.9} />
+            <StatRow label="Win Rate" value={`${stats.winRate}%`} good={parseInt(stats.winRate) > 50} bad={parseInt(stats.winRate) < 45} />
+            <StatRow label="Headshot" value={`${stats.hs}%`} icon={<Crosshair size={12}/>} />
+            <StatRow label="Avg Score" value={stats.avgScore} icon={<Activity size={12}/>} />
         </div>
 
         {/* --- LAST GAMES FORM --- */}
         {!isExpanded && (
             <div className="mt-4 flex items-center justify-between bg-black/20 p-2 rounded-xl">
                  <div className="flex items-center gap-2">
-                    {stats!.mainAgentImg && <img src={stats!.mainAgentImg} className="w-6 h-6 rounded-full border border-slate-600" alt="Main"/>}
+                    {stats.mainAgentImg && <img src={stats.mainAgentImg} className="w-6 h-6 rounded-full border border-slate-600" alt="Main"/>}
                     <span className="text-xs text-slate-500 font-bold">RECENT FORM</span>
                  </div>
                  <div className="flex gap-1">
-                    {stats!.lastGames.slice(0, 10).map((res, i) => (
+                    {stats.lastGames.slice(0, 10).map((res, i) => (
                         <div key={i} className={`w-1.5 h-6 rounded-full transition hover:scale-125 ${res === 'W' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500/40'}`}></div>
                     ))}
                  </div>
@@ -251,19 +274,9 @@ export default function ValorantCard({ riotId, data }: ValorantCardProps) {
 
         {/* --- EXPANDED HISTORY --- */}
         {isExpanded && (
-          <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 
-                {/* Style de la Scrollbar */}
-                [&::-webkit-scrollbar]:w-1.5
-                [&::-webkit-scrollbar-track]:bg-transparent
-                [&::-webkit-scrollbar-thumb]:bg-slate-700/50
-                [&::-webkit-scrollbar-thumb]:rounded-full
-                [&::-webkit-scrollbar-thumb]:hover:bg-slate-500
-                {/* Support Firefox */}
-                [scrollbar-width:thin]
-                [scrollbar-color:theme('colors.slate.700')_transparent]
-            ">
+          <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
             {data.matches.map((match: any) => renderMatchDetail(match))}
-            </div>
+          </div>
         )}
 
         <button 
