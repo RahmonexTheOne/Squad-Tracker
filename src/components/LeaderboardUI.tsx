@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Link from 'next/link'; 
 import { 
-  Trophy, Swords, Shield, Crosshair, ChevronDown, ChevronUp, Skull, Activity, Star
+  Trophy, Swords, Shield, Crosshair, Skull, Activity, Star
 } from 'lucide-react';
 
 export default function LeaderboardUI({ squadName, players }: { squadName: string, players: any[] }) {
@@ -90,6 +90,7 @@ export default function LeaderboardUI({ squadName, players }: { squadName: strin
 // --- CARTE JOUEUR ---
 function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
     
+    // --- 🔴 FONCTION DE CALCUL SÉCURISÉE ---
     const calculateStats = () => {
         const data = player.fullStats;
         if (!data || !data.matches || data.matches.length === 0) return null;
@@ -99,10 +100,16 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
         const lastGames: string[] = [];
         const agentsPlayed: Record<string, { count: number, img: string }> = {};
         
-        const [myName] = player.riot_id?.split('#') || ["", ""];
+        // Sécurité sur le Riot ID
+        if (!player.riot_id) return null;
+        const [myName] = player.riot_id.split('#');
 
         data.matches.forEach((match: any) => {
-            const p = match.players.all_players.find((pl: any) => pl.name.toLowerCase() === myName.toLowerCase());
+            // On cherche le joueur dans le match
+            const p = match.players.all_players.find((pl: any) => 
+                pl.name && pl.name.toLowerCase() === myName.toLowerCase()
+            );
+
             if (p) {
                 totalKills += p.stats.kills;
                 totalDeaths += p.stats.deaths;
@@ -111,8 +118,20 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
                 totalShots += shots;
                 totalHeadshots += p.stats.headshots;
 
-                const myTeam = p.team.toLowerCase();
-                const hasWon = match.teams[myTeam].has_won;
+                // --- 🛡️ CORRECTION CRASH "has_won" ---
+                // 1. On récupère la team
+                const myTeam = p.team ? p.team.toLowerCase() : 'blue';
+                
+                // 2. On vérifie si c'est un Deathmatch ou si les teams existent
+                let hasWon = false;
+                if (match.metadata.mode === 'Deathmatch') {
+                    // En DM, on considère win si Top 1 (ou Top 3 selon ta pref)
+                    hasWon = p.stats.rank === 1; 
+                } else if (match.teams && match.teams[myTeam]) {
+                    // En standard, on lit la propriété de l'équipe
+                    hasWon = match.teams[myTeam].has_won;
+                }
+                
                 if (hasWon) totalWins++;
                 lastGames.push(hasWon ? 'W' : 'L');
 
@@ -157,15 +176,14 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
                 ${isExpanded ? 'z-30 scale-[1.01]' : 'hover:scale-[1.01] z-10'}
             `}
         >
-            {/* 1. FOND DE CARTE */}
+            {/* FOND DE CARTE */}
             <div className={`
                 relative bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl shadow-2xl overflow-hidden
                 ${rank === 1 ? 'border-yellow-500/30 bg-gradient-to-r from-yellow-900/10 to-slate-900' : ''}
                 ${isExpanded ? 'ring-1 ring-indigo-500/50' : ''}
             `}>
                 
-                {/* --- CONTENU --- */}
-                {/* Padding droite ajusté pour la nouvelle taille */}
+                {/* CONTENU */}
                 <div className={`relative z-20 transition-all duration-500 ${isExpanded ? 'lg:pr-32' : 'pr-0'}`}>
                     
                     {/* HEADER */}
@@ -203,7 +221,7 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
                             </div>
                         </div>
 
-                        {/* RANG VALORANT */}
+                        {/* RANG */}
                         <div className="flex items-center gap-8 relative z-30">
                             <div className="text-right hidden md:block">
                                 <p className={`text-2xl font-black uppercase italic ${
@@ -252,8 +270,7 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
                     </div>
                 </div>
 
-                {/* --- IMAGE INTERNE (Visible quand FERMÉ) --- */}
-                {/* DANS le conteneur principal -> Sera coupée */}
+                {/* IMAGE INTERNE (Visible quand FERMÉ) */}
                 <div className={`
                     absolute right-[-20px] bottom-[-20px] h-[120%] w-auto z-10 pointer-events-none transition-all duration-500 ease-out
                     ${isExpanded ? 'opacity-0 translate-x-20' : 'opacity-30 md:opacity-100 translate-x-0'}
@@ -270,18 +287,21 @@ function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
 
             </div>
 
-            {/* --- IMAGE EXTERNE (Visible quand OUVERT) - PLUS PETITE --- */}
-            {/* Position: Absolute, HORS du conteneur. */}
+            {/* IMAGE EXTERNE (Visible quand OUVERT) */}
             <div className={`
                 absolute -right-20 md:-right-24 bottom-0 z-40 pointer-events-none transition-all duration-500 ease-out
                 ${isExpanded 
-                    ? 'opacity-100 translate-x-0' // Juste opacité, pas de scale
+                    ? 'opacity-100 translate-x-0' 
                     : 'opacity-0 translate-y-8 group-hover:opacity-100 group-hover:translate-y-0'
                 }
                 hidden lg:block
             `}>
-                {/* h-72 = 288px (Taille raisonnable, "smaller like before") */}
-                
+                <img 
+                    src={characterImage}
+                    className="h-72 w-auto object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.8)]"
+                    onError={(e) => e.currentTarget.style.display = 'none'} 
+                    alt=""
+                />
             </div>
         </div>
     );

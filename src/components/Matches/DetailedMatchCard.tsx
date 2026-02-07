@@ -6,61 +6,75 @@ import KillMap from './KillMap';
 
 interface DetailedMatchCardProps {
   match: any;
-  squadMembers: any[]; // La liste OFFICIELLE des membres
+  squadMembers: any[];
 }
 
-// Palette de couleurs pour la squad (jusqu'à 5 joueurs)
-const SQUAD_COLORS = [
-    '#F87171', // Rouge (Tailwind Red-400)
-    '#60A5FA', // Bleu (Blue-400)
-    '#4ADE80', // Vert (Green-400)
-    '#FACC15', // Jaune (Yellow-400)
-    '#A78BFA'  // Violet (Purple-400)
-];
+const SQUAD_COLORS = ['#F87171', '#60A5FA', '#4ADE80', '#FACC15', '#A78BFA'];
 
 export default function DetailedMatchCard({ match, squadMembers }: DetailedMatchCardProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // 1. FILTRAGE STRICT : On ne garde QUE les joueurs présents dans squadMembers
-  // On compare riotId (ex: "Rahmonex#EUW") avec le match (name + tag)
+  // 1. FILTRAGE ET SÉCURISATION
   const playersInGame = match.players.all_players.filter((p: any) => {
+    // Sécurité : on vérifie que p.name et p.tag existent
+    if (!p.name || !p.tag) return false;
     const playerRiotId = `${p.name}#${p.tag}`.toLowerCase();
     
-    // On cherche si ce RiotID existe dans notre liste squadMembers
     return squadMembers.some(member => 
         member.riotId && member.riotId.toLowerCase() === playerRiotId
     );
   }).map((p: any, index: number) => ({
       ...p,
-      // On assigne une couleur unique à chaque joueur trouvé
       uiColor: SQUAD_COLORS[index % SQUAD_COLORS.length] 
   }));
 
-  // Si aucun membre de la squad n'est trouvé (bug data), on ne crash pas
   if (playersInGame.length === 0) return null;
 
-  // Info générale
   const metadata = match.metadata;
-  // On détermine la victoire par rapport à la team du premier joueur de la squad
-  const myTeamColor = playersInGame[0].team.toLowerCase(); 
-  const isWin = match.teams[myTeamColor].has_won;
-  const score = `${match.teams.blue.rounds_won} : ${match.teams.red.rounds_won}`;
+  const firstPlayer = playersInGame[0];
+  
+  // --- 🔴 CORRECTION DE L'ERREUR ICI ---
+  // On gère les cas où "team" ou "teams" n'existent pas (ex: Deathmatch)
+  const isDeathmatch = metadata.mode === 'Deathmatch';
+  const myTeamColor = firstPlayer.team ? firstPlayer.team.toLowerCase() : 'blue';
+  
+  let isWin = false;
+  let score = "0 : 0";
+
+  if (isDeathmatch) {
+      // En Deathmatch, pas de "teams". Win si rang 1.
+      const rank = firstPlayer.stats?.rank || 0;
+      isWin = rank === 1;
+      score = `Rank #${rank}`;
+  } else {
+      // Mode Normal : On vérifie que les équipes existent avant de lire
+      if (match.teams && match.teams[myTeamColor]) {
+          isWin = match.teams[myTeamColor].has_won;
+          // Sécurité sur les scores
+          const blueScore = match.teams.blue?.rounds_won ?? 0;
+          const redScore = match.teams.red?.rounds_won ?? 0;
+          score = `${blueScore} : ${redScore}`;
+      } else {
+          // Fallback si l'API renvoie de la donnée corrompue
+          isWin = false;
+          score = "N/A";
+      }
+  }
+  // -------------------------------------
+
   const mapName = metadata.map;
   const date = new Date(metadata.game_start * 1000).toLocaleDateString();
 
-  // 2. RECUPERATION DES MORTS (Avec Couleurs)
+  // 2. RECUPERATION DES MORTS
   const squadDeaths: any[] = [];
-  
   if (match.kills) {
       match.kills.forEach((kill: any) => {
-         // On cherche si la victime fait partie de NOS joueurs filtrés
          const victim = playersInGame.find((p: any) => p.puuid === kill.victim_puuid);
-         
          if (victim && kill.victim_death_location) {
              squadDeaths.push({
                  x: kill.victim_death_location.x,
                  y: kill.victim_death_location.y,
-                 color: victim.uiColor, // La couleur assignée au joueur
+                 color: victim.uiColor,
                  victimName: victim.name
              });
          }
@@ -73,12 +87,11 @@ export default function DetailedMatchCard({ match, squadMembers }: DetailedMatch
       ${isOpen ? 'ring-1 ring-slate-600 bg-slate-900' : 'hover:bg-slate-900/80'}
     `}>
       
-      {/* --- HEADER --- */}
+      {/* HEADER */}
       <div 
         className="p-4 flex items-center justify-between cursor-pointer"
         onClick={() => setIsOpen(!isOpen)}
       >
-        {/* Gauche : Résultat & Map */}
         <div className="flex items-center gap-4">
             <div className={`w-1.5 h-12 rounded-full ${isWin ? 'bg-green-500' : 'bg-red-500'}`}></div>
             <div>
@@ -93,7 +106,6 @@ export default function DetailedMatchCard({ match, squadMembers }: DetailedMatch
             </div>
         </div>
 
-        {/* Centre : Les Joueurs de la Squad (Avec bordure colorée) */}
         <div className="flex -space-x-3">
             {playersInGame.map((p: any) => (
                 <div key={p.puuid} className="relative group">
@@ -101,29 +113,23 @@ export default function DetailedMatchCard({ match, squadMembers }: DetailedMatch
                         src={p.assets.agent.small} 
                         alt={p.name} 
                         className="w-10 h-10 rounded-full border-2 bg-slate-800 object-cover relative z-10"
-                        style={{ borderColor: p.uiColor }} // Bordure couleur joueur
+                        style={{ borderColor: p.uiColor }}
                     />
-                    {/* Tooltip */}
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-black text-xs rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none z-20 border border-slate-700">
-                        <span style={{ color: p.uiColor }}>●</span> {p.name}
-                    </div>
                 </div>
             ))}
         </div>
 
-        {/* Droite : Toggle */}
         <div className="text-slate-500">
             {isOpen ? <ChevronUp/> : <ChevronDown/>}
         </div>
       </div>
 
-      {/* --- DETAILS (ACCORDION) --- */}
+      {/* DETAILS */}
       {isOpen && (
         <div className="border-t border-slate-800 bg-black/20 p-6 animate-in slide-in-from-top-2">
-            
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 
-                {/* COLONNE 1 & 2 : Tableau des Scores Squad */}
+                {/* TABLEAU SCORES */}
                 <div className="lg:col-span-2 space-y-4">
                     <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
                         <Swords size={16}/> Squad Performance
@@ -131,13 +137,12 @@ export default function DetailedMatchCard({ match, squadMembers }: DetailedMatch
                     
                     {playersInGame.map((p: any) => {
                         const kd = (p.stats.kills / (p.stats.deaths || 1)).toFixed(2);
-                        const hsPercent = Math.round((p.stats.headshots / (p.stats.headshots + p.stats.bodyshots + p.stats.legshots)) * 100);
+                        const totalShots = p.stats.headshots + p.stats.bodyshots + p.stats.legshots;
+                        const hsPercent = totalShots > 0 ? Math.round((p.stats.headshots / totalShots) * 100) : 0;
 
                         return (
                             <div key={p.puuid} className="bg-slate-800/40 rounded-lg p-3 flex items-center justify-between border border-white/5 relative overflow-hidden">
-                                {/* Petite barre de couleur à gauche pour identifier */}
                                 <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: p.uiColor }}></div>
-                                
                                 <div className="flex items-center gap-3 pl-2">
                                     <img src={p.assets.agent.small} className="w-12 h-12 rounded-lg" alt="Agent"/>
                                     <div>
@@ -145,7 +150,6 @@ export default function DetailedMatchCard({ match, squadMembers }: DetailedMatch
                                         <p className="text-xs text-slate-400">{p.character} • ACS: {p.stats.score}</p>
                                     </div>
                                 </div>
-                                
                                 <div className="flex gap-6 sm:gap-12 text-center">
                                     <div>
                                         <p className="text-[10px] text-slate-500 uppercase font-bold">K/D/A</p>
@@ -164,40 +168,37 @@ export default function DetailedMatchCard({ match, squadMembers }: DetailedMatch
                         );
                     })}
 
-                    {/* ROUND HISTORY */}
-                    <div className="mt-6 pt-4 border-t border-slate-800/50">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Round History</h4>
-                        <div className="flex gap-1 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-700">
-                            {match.rounds.map((round: any, i: number) => {
-                                const winningTeam = round.winning_team.toLowerCase();
-                                const won = winningTeam === myTeamColor;
-                                return (
-                                    <div 
-                                        key={i} 
-                                        className={`
-                                            w-6 h-8 flex-shrink-0 rounded flex items-center justify-center text-[10px] font-bold border
-                                            ${won 
-                                                ? 'bg-green-500/10 text-green-400 border-green-500/20' 
-                                                : 'bg-red-500/10 text-red-400 border-red-500/20'}
-                                        `}
-                                    >
-                                        {i+1}
-                                    </div>
-                                )
-                            })}
+                    {/* ROUND HISTORY - Caché en Deathmatch */}
+                    {!isDeathmatch && match.rounds && (
+                        <div className="mt-6 pt-4 border-t border-slate-800/50">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Round History</h4>
+                            <div className="flex gap-1 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-700">
+                                {match.rounds.map((round: any, i: number) => {
+                                    const winningTeam = round.winning_team ? round.winning_team.toLowerCase() : '';
+                                    const won = winningTeam === myTeamColor;
+                                    return (
+                                        <div 
+                                            key={i} 
+                                            className={`
+                                                w-6 h-8 flex-shrink-0 rounded flex items-center justify-center text-[10px] font-bold border
+                                                ${won ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}
+                                            `}
+                                        >
+                                            {i+1}
+                                        </div>
+                                    )
+                                })}
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
 
-                {/* COLONNE 3 : Kill Map */}
+                {/* KILL MAP */}
                 <div className="lg:col-span-1">
-                     <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                      <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
                         <Skull size={16}/> Death Locations
                     </h4>
-                    
-                    {/* LE COMPOSANT MAP CORRIGÉ */}
                     <KillMap mapName={metadata.map} deaths={squadDeaths} />
-                    
                     <p className="text-[10px] text-slate-500 mt-3 text-center italic">
                         * Locations where squad members died.
                     </p>

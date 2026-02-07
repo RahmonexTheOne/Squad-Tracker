@@ -1,7 +1,7 @@
 const BASE_URL = 'https://api.henrikdev.xyz/valorant';
 const REGION = 'eu';
 
-// --- 1. FONCTION PROFIL JOUEUR (Reste inchangée) ---
+// --- 1. FONCTION PROFIL JOUEUR ---
 export async function getValorantStats(name: string, tag: string) {
   const apiKey = process.env.HENRIK_API_KEY;
 
@@ -17,10 +17,26 @@ export async function getValorantStats(name: string, tag: string) {
 
   try {
     const [matchesRes, mmrRes, accountRes, mmrLifeRes] = await Promise.all([
-      fetch(`${BASE_URL}/v3/matches/${REGION}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?size=10`, { headers, next: { revalidate: 300 } }),
-      fetch(`${BASE_URL}/v1/mmr-history/${REGION}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`, { headers, next: { revalidate: 300 } }),
-      fetch(`${BASE_URL}/v1/account/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`, { headers, next: { revalidate: 3600 } }), 
-      fetch(`${BASE_URL}/v2/mmr/${REGION}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`, { headers, next: { revalidate: 3600 } })
+      // 🔴 MATCHS: Heavy data -> No cache to avoid 2MB error
+      fetch(`${BASE_URL}/v3/matches/${REGION}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?size=10`, { 
+        headers, 
+        cache: 'no-store' 
+      }),
+      // 🟢 MMR: Light data -> Cache OK (5 min)
+      fetch(`${BASE_URL}/v1/mmr-history/${REGION}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`, { 
+        headers, 
+        next: { revalidate: 300 } 
+      }),
+      // 🔵 ACCOUNT: Very stable -> Cache OK (1h)
+      fetch(`${BASE_URL}/v1/account/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`, { 
+        headers, 
+        next: { revalidate: 3600 } 
+      }), 
+      // 🟡 PEAK RANK: Very stable -> Cache OK (1h)
+      fetch(`${BASE_URL}/v2/mmr/${REGION}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`, { 
+        headers, 
+        next: { revalidate: 3600 } 
+      })
     ]);
 
     const matchesData = await matchesRes.json();
@@ -42,7 +58,7 @@ export async function getValorantStats(name: string, tag: string) {
   }
 }
 
-// --- 2. GESTION DE LA SQUAD (C'est ici qu'on augmente la limite) ---
+// --- 2. GESTION DE LA SQUAD ---
 
 export interface SquadMember {
   profileId: string;
@@ -67,11 +83,10 @@ export async function getSquadMatches(members: SquadMember[]) {
     const [name, tag] = member.riotId.split('#');
     
     try {
-      // 🔥 MODIFICATION ICI : on passe de size=5 à size=15
-      // Cela va récupérer les 15 derniers matchs de chaque membre
+      // 🔴 SQUAD MATCHES: VERY heavy data (15 matches) -> No cache
       const res = await fetch(`${BASE_URL}/v3/matches/${REGION}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?size=15`, { 
         headers, 
-        next: { revalidate: 300 } // Cache de 5 minutes
+        cache: 'no-store' // 👈 Essential fix for large JSON responses
       });
       const data = await res.json();
       return data.data || [];
@@ -95,7 +110,7 @@ export async function getSquadMatches(members: SquadMember[]) {
     }
   });
 
-  // Tri par date (du plus récent au plus vieux)
+  // Sort by date (newest first)
   return allMatches.sort((a, b) => b.metadata.game_start - a.metadata.game_start);
 }
 
@@ -110,16 +125,16 @@ export async function getSquadMMRHistory(members: SquadMember[]) {
     const [name, tag] = member.riotId.split('#');
     
     try {
+      // 🟢 MMR HISTORY: Light data -> Cache enabled (1h)
       const res = await fetch(`${BASE_URL}/v1/mmr-history/${REGION}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`, { 
         headers, 
-        next: { revalidate: 3600 } // Cache 1h
+        next: { revalidate: 3600 } 
       });
       const json = await res.json();
       
-      // On retourne un objet propre avec le nom du joueur et son historique
       return {
         username: member.username,
-        data: json.data || [] // Liste des variations de MMR
+        data: json.data || [] 
       };
     } catch (e) {
       console.error(`Erreur MMR pour ${member.username}`, e);
