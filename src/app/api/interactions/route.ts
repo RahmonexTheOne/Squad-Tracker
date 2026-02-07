@@ -1,57 +1,64 @@
-import { NextResponse } from 'next/server';
-import { verifyKey } from 'discord-interactions';
+import { verifyKey } from "discord-interactions";
 
-// 🔥 LA LIGNE MAGIQUE : Force le mode "Edge" (Démarrage en 0.1s)
-export const runtime = 'edge'; 
+export const runtime = "edge";
+
+// Some Discord/infra probes may use these methods during verification.
+// Returning 200 prevents the generic "could not be verified" error.
+export async function GET() {
+  return new Response("OK", { status: 200 });
+}
+
+export async function HEAD() {
+  return new Response(null, { status: 200 });
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 200 });
+}
 
 export async function POST(req: Request) {
-  // 1. Récupération des données (API Web Standard pour le Edge)
-  const signature = req.headers.get('X-Signature-Ed25519');
-  const timestamp = req.headers.get('X-Signature-Timestamp');
+  const signature = req.headers.get("X-Signature-Ed25519");
+  const timestamp = req.headers.get("X-Signature-Timestamp");
   const body = await req.text();
 
-  // 2. Vérification rapide
   if (!signature || !timestamp || !body) {
-    return NextResponse.json({ error: 'Bad request' }, { status: 401 });
+    return new Response(JSON.stringify({ error: "Bad request" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  // 3. Vérification Crypto
-  // Note: discord-interactions fonctionne très bien sur le Edge
-  const isValidRequest = verifyKey(
-    body,
-    signature,
-    timestamp,
-    process.env.DISCORD_PUBLIC_KEY!
-  );
+  const publicKey = process.env.DISCORD_PUBLIC_KEY;
+  if (!publicKey) {
+    // Misconfigured env var will break validation in prod.
+    return new Response(JSON.stringify({ error: "Missing DISCORD_PUBLIC_KEY" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const isValidRequest = verifyKey(body, signature, timestamp, publicKey);
 
   if (!isValidRequest) {
-    return NextResponse.json({ error: 'Bad request signature' }, { status: 401 });
+    return new Response(JSON.stringify({ error: "Bad request signature" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  // 4. Traitement
   const interaction = JSON.parse(body);
 
-  // --- PING (Validation URL) ---
+  // PING -> PONG (must be an immediate 200 with {"type":1})
   if (interaction.type === 1) {
-    return NextResponse.json({ type: 1 });
+    return new Response(JSON.stringify({ type: 1 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  // --- COMMANDES ---
-  if (interaction.type === 2) {
-    const { name } = interaction.data;
-    
-    if (name === 'profile') {
-      const discordUser = interaction.member?.user || interaction.user;
-      const baseUrl = 'https://squad-tracker-snowy.vercel.app'; 
-      
-      return NextResponse.json({
-        type: 4,
-        data: {
-          content: `Hey <@${discordUser.id}> ! 🫡\nVoici ton dossier : ${baseUrl}/profile/${discordUser.username}`
-        }
-      });
-    }
-  }
-
-  return NextResponse.json({ error: 'Unknown command' }, { status: 400 });
+  // ... handle other commands
+  return new Response(JSON.stringify({ error: "Unknown command" }), {
+    status: 400,
+    headers: { "Content-Type": "application/json" },
+  });
 }
