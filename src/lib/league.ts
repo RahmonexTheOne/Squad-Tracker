@@ -109,3 +109,63 @@ export async function getLeagueStats(gameName: string, tagLine: string) {
     return null;
   }
 }
+
+export async function getSquadLeagueMatches(members: any[]) {
+  if (!API_KEY) return [];
+
+  const headers = { 'X-Riot-Token': API_KEY };
+  const allMatches: any[] = [];
+
+  // 1. Get PUUIDs for all members
+  const memberPuuids = await Promise.all(members.map(async (member) => {
+      try {
+          const [gameName, tagLine] = member.riotId.split('#');
+          const res = await fetch(
+              `${REGIONAL_URL}/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`,
+              { headers, next: { revalidate: 3600 } }
+          );
+          if (!res.ok) return null;
+          const data = await res.json();
+          return { ...member, puuid: data.puuid };
+      } catch (e) {
+          return null;
+      }
+  }));
+
+  const validMembers = memberPuuids.filter(m => m !== null);
+
+  // 2. Fetch Match IDs for each member (last 5 matches)
+  const matchPromises = validMembers.map(async (member) => {
+      try {
+          const res = await fetch(
+              `${REGIONAL_URL}/lol/match/v5/matches/by-puuid/${member.puuid}/ids?start=0&count=5`,
+              { headers, cache: 'no-store' }
+          );
+          const matchIds = await res.json();
+          return matchIds;
+      } catch (e) {
+          return [];
+      }
+  });
+
+  const allMatchIds = (await Promise.all(matchPromises)).flat();
+  // Remove duplicates
+  const uniqueMatchIds = Array.from(new Set(allMatchIds));
+
+  // 3. Fetch Match Details
+  const detailsPromises = uniqueMatchIds.map(async (matchId) => {
+      try {
+          const res = await fetch(`${REGIONAL_URL}/lol/match/v5/matches/${matchId}`, { headers });
+          if (!res.ok) return null;
+          const matchData = await res.json();
+          
+          // Add a "game_type" field to easily identify it in the frontend
+          return { ...matchData, game_type: 'lol' };
+      } catch (e) {
+          return null;
+      }
+  });
+
+  const results = await Promise.all(detailsPromises);
+  return results.filter(m => m !== null);
+}

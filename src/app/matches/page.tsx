@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr'; // 👈 Utilisation de la nouvelle librairie
+import { createBrowserClient } from '@supabase/ssr';
 import Sidebar from '@/components/Sidebar';
 import DetailedMatchCard from '@/components/Matches/DetailedMatchCard';
-import { Swords, Filter, Search, Loader2 } from 'lucide-react';
+// On imaginera que tu créeras ce composant plus tard, ou on utilise un placeholder pour l'instant
+import { Swords, Shield, Filter, Search, Loader2, Gamepad2 } from 'lucide-react';
+import DetailedLeagueCard from '@/components/Matches/DetailedLeagueCard';
 
-// On définit le type pour éviter les erreurs "implicit any"
 interface SquadProfile {
   id: string;
   username: string;
@@ -16,7 +17,6 @@ interface SquadProfile {
 }
 
 export default function MatchesPage() {
-  // 1. Initialisation correcte pour @supabase/ssr côté client
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -25,9 +25,12 @@ export default function MatchesPage() {
   // --- ÉTATS ---
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
-  const [squadMembers, setSquadMembers] = useState<SquadProfile[]>([]); // 👈 On applique le type ici
+  const [squadMembers, setSquadMembers] = useState<SquadProfile[]>([]);
   const [matches, setMatches] = useState<any[]>([]);
   
+  // --- NOUVEAU : SÉLECTEUR DE JEU ---
+  const [selectedGame, setSelectedGame] = useState<'valorant' | 'lol'>('valorant');
+
   // Filtres
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [resultFilter, setResultFilter] = useState<'ALL' | 'WIN' | 'LOSS'>('ALL');
@@ -50,11 +53,8 @@ export default function MatchesPage() {
             .eq('squad_id', profile.squad_id);
             
           if (members) {
-            // On force le typage ici pour rassurer TypeScript
             const validMembers = (members as SquadProfile[]).filter(m => m.riot_id);
             setSquadMembers(validMembers);
-            
-            // Auto-sélection de moi-même
             const me = validMembers.find((m) => m.id === user.id);
             if (me && me.riot_id) setSelectedMembers([me.riot_id]);
           }
@@ -78,16 +78,15 @@ export default function MatchesPage() {
     }
   };
 
-  // 3. Recherche
+  // 3. Recherche (Mise à jour avec le Jeu)
   const handleSearch = async () => {
     if (selectedMembers.length === 0) return alert("Select at least one agent.");
     
     setSearching(true);
     setMatches([]);
 
-    // Préparation des données pour l'API Route
     const membersToFetch = squadMembers
-        .filter((m) => selectedMembers.includes(m.riot_id)) // Le 'm' est maintenant typé !
+        .filter((m) => selectedMembers.includes(m.riot_id))
         .map((m) => ({
             profileId: m.id,
             username: m.username,
@@ -99,7 +98,11 @@ export default function MatchesPage() {
         const response = await fetch('/api/matches/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ members: membersToFetch }),
+            // 👇 ON ENVOIE LE JEU SÉLECTIONNÉ
+            body: JSON.stringify({ 
+                members: membersToFetch, 
+                game: selectedGame 
+            }),
         });
         
         const results = await response.json();
@@ -107,22 +110,27 @@ export default function MatchesPage() {
         if (Array.isArray(results)) {
             let filteredMatches = results;
             
-            // Filtrage Client (Rapide)
+            // Filtrage Client
             if (resultFilter !== 'ALL') {
                 filteredMatches = results.filter((match: any) => {
-                    const player = match.players.all_players.find((p: any) => 
-                        // Comparaison sécurisée
-                        p.name && p.tag && selectedMembers.some(id => id.toLowerCase() === `${p.name}#${p.tag}`.toLowerCase())
-                    );
+                    // Logique spécifique par jeu pour déterminer "Mon Joueur"
+                    // (Simplifié ici pour l'exemple)
+                    const isValo = selectedGame === 'valorant';
                     
-                    if (!player) return false;
-                    
-                    // On vérifie l'équipe
-                    const teamColor = player.team ? player.team.toLowerCase() : null;
-                    if (!teamColor || !match.teams || !match.teams[teamColor]) return false;
-
-                    const won = match.teams[teamColor].has_won;
-                    return resultFilter === 'WIN' ? won : !won;
+                    if (isValo) {
+                        const player = match.players.all_players.find((p: any) => 
+                            p.name && p.tag && selectedMembers.some(id => id.toLowerCase() === `${p.name}#${p.tag}`.toLowerCase())
+                        );
+                        if (!player) return false;
+                        const teamColor = player.team ? player.team.toLowerCase() : null;
+                        if (!teamColor || !match.teams || !match.teams[teamColor]) return false;
+                        const won = match.teams[teamColor].has_won;
+                        return resultFilter === 'WIN' ? won : !won;
+                    } else {
+                        // Logique LoL (à adapter selon la structure de tes données LoL)
+                        // Pour l'instant on retourne tout si c'est LoL pour éviter de filtrer à vide
+                        return true; 
+                    }
                 });
             }
             setMatches(filteredMatches);
@@ -143,12 +151,31 @@ export default function MatchesPage() {
       <main className="md:ml-20 lg:ml-64 p-6 lg:p-10 min-h-screen">
         
         <div className="max-w-5xl mx-auto">
-            {/* HEADER */}
-            <div className="mb-8">
-                <h1 className="text-3xl font-black text-white flex items-center gap-3 uppercase">
-                    <Swords className="text-indigo-500" size={32}/> Combat Logs
-                </h1>
-                <p className="text-slate-400 text-sm">Select agents to retrieve mission reports.</p>
+            {/* HEADER & GAME SELECTOR */}
+            <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
+                <div>
+                    <h1 className="text-3xl font-black text-white flex items-center gap-3 uppercase">
+                        {selectedGame === 'valorant' ? <Swords className="text-[#FF4655]" size={32}/> : <Shield className="text-[#C8AA6E]" size={32}/>}
+                        Combat Logs
+                    </h1>
+                    <p className="text-slate-400 text-sm">Select agents to retrieve mission reports.</p>
+                </div>
+
+                {/* --- SELECTEUR DE JEU --- */}
+                <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+                    <button
+                        onClick={() => { setSelectedGame('valorant'); setMatches([]); }}
+                        className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${selectedGame === 'valorant' ? 'bg-[#FF4655] text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+                    >
+                        <Swords size={16}/> VALORANT
+                    </button>
+                    <button
+                        onClick={() => { setSelectedGame('lol'); setMatches([]); }}
+                        className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${selectedGame === 'lol' ? 'bg-[#C8AA6E] text-black shadow-lg' : 'text-slate-500 hover:text-white'}`}
+                    >
+                        <Shield size={16}/> LEAGUE
+                    </button>
+                </div>
             </div>
 
             {/* --- FILTERS BOX --- */}
@@ -169,11 +196,11 @@ export default function MatchesPage() {
                                     className={`
                                         flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-bold transition-all
                                         ${isSelected 
-                                            ? 'bg-indigo-600/20 border-indigo-500 text-white' 
+                                            ? (selectedGame === 'valorant' ? 'bg-[#FF4655]/10 border-[#FF4655] text-white' : 'bg-[#C8AA6E]/10 border-[#C8AA6E] text-[#C8AA6E]')
                                             : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-600'}
                                     `}
                                 >
-                                    <div className={`w-2 h-2 rounded-full ${isSelected ? 'bg-indigo-400' : 'bg-slate-600'}`}></div>
+                                    <div className={`w-2 h-2 rounded-full ${isSelected ? (selectedGame === 'valorant' ? 'bg-[#FF4655]' : 'bg-[#C8AA6E]') : 'bg-slate-600'}`}></div>
                                     {member.username}
                                 </button>
                             );
@@ -206,7 +233,10 @@ export default function MatchesPage() {
                         disabled={searching || selectedMembers.length === 0}
                         className={`
                             px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg transition-all
-                            ${searching ? 'bg-slate-800 text-slate-500 cursor-wait' : 'bg-indigo-600 hover:bg-indigo-500 text-white hover:scale-105'}
+                            ${searching ? 'bg-slate-800 text-slate-500 cursor-wait' : 
+                              selectedGame === 'valorant' 
+                                ? 'bg-[#FF4655] hover:bg-red-600 text-white hover:scale-105' 
+                                : 'bg-[#C8AA6E] hover:bg-yellow-600 text-black hover:scale-105'}
                         `}
                     >
                         {searching ? <><Loader2 size={18} className="animate-spin"/> Scanning...</> : <><Filter size={18}/> Retrieve Logs</>}
@@ -218,16 +248,25 @@ export default function MatchesPage() {
             <div className="space-y-4">
                 {searching ? (
                     <div className="text-center py-20 animate-pulse">
-                        <Swords size={48} className="mx-auto text-slate-700 mb-4"/>
+                        {selectedGame === 'valorant' ? <Swords size={48} className="mx-auto text-slate-700 mb-4"/> : <Shield size={48} className="mx-auto text-slate-700 mb-4"/>}
                         <p className="text-slate-500">Decrypting match data...</p>
                     </div>
                 ) : matches.length > 0 ? (
                     matches.map((match) => (
-                        <DetailedMatchCard 
-                            key={match.metadata.matchid} 
-                            match={match} 
-                            squadMembers={squadMembers.map(m => ({ riotId: m.riot_id }))} 
-                        />
+                        selectedGame === 'valorant' ? (
+                            <DetailedMatchCard 
+                                key={match.metadata.matchid} 
+                                match={match} 
+                                squadMembers={squadMembers.map(m => ({ riotId: m.riot_id }))} 
+                            />
+                        ) : (
+                            // 🟡 PLACEHOLDER POUR LO LEAGUE (A REMPLACER PAR TA CARTE LOL DETAILLÉE)
+                            <DetailedLeagueCard 
+                                key={match.metadata.matchId}
+                                match={match}
+                                squadMembers={squadMembers.map(m => ({ riotId: m.riot_id }))}
+                            />
+                        )
                     ))
                 ) : (
                     <div className="text-center py-20 border-2 border-dashed border-slate-800 rounded-3xl bg-slate-900/30">
