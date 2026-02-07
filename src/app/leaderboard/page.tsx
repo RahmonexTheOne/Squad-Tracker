@@ -1,83 +1,116 @@
-import { Trophy, ArrowLeft, Crown } from 'lucide-react'; // Ajout de Crown ici
-import Link from 'next/link';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import LeaderboardUI from '@/components/LeaderboardUI';
+import { getSquadMMRHistory, SquadMember } from '@/lib/valorant';
 
-export default function LeaderboardPage() {
-  const leaderboardData = [
-    { rank: 1, name: "JettMain", rr: 450, tier: "Radiant", kda: "1.8", main: "Jett" },
-    { rank: 2, name: "DarkSasukeDu93", rr: 312, tier: "Immortal 3", kda: "1.4", main: "Reyna" },
-    { rank: 3, name: "SageHeal", rr: 289, tier: "Immortal 2", kda: "0.9", main: "Sage" },
-    { rank: 4, name: "OmenOneTrick", rr: 210, tier: "Immortal 1", kda: "1.1", main: "Omen" },
-    { rank: 5, name: "SovaLineups", rr: 180, tier: "Ascendant 3", kda: "1.0", main: "Sova" },
-  ];
+// HELPER : SCORE DES RANGS (Pour trier côté serveur)
+const RANK_VALUES: Record<string, number> = {
+  'Radiant': 25, 'Immortal 3': 24, 'Immortal 2': 23, 'Immortal 1': 22,
+  'Ascendant 3': 21, 'Ascendant 2': 20, 'Ascendant 1': 19,
+  'Diamond 3': 18, 'Diamond 2': 17, 'Diamond 1': 16,
+  'Platinum 3': 15, 'Platinum 2': 14, 'Platinum 1': 13,
+  'Gold 3': 12, 'Gold 2': 11, 'Gold 1': 10,
+  'Silver 3': 9, 'Silver 2': 8, 'Silver 1': 7,
+  'Bronze 3': 6, 'Bronze 2': 5, 'Bronze 1': 4,
+  'Iron 3': 3, 'Iron 2': 2, 'Iron 1': 1, 'Unranked': 0
+};
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans p-6 lg:p-10">
-      
-      {/* Header avec bouton retour */}
-      <div className="max-w-5xl mx-auto mb-10 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-            <div className="p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/20 text-yellow-500">
-                <Trophy size={32} />
-            </div>
-            <div>
-                <h1 className="text-3xl font-black text-white">Global Ranking</h1>
-                <p className="text-slate-400">Who is the real carry?</p>
-            </div>
-        </div>
-        <Link href="/" className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-full text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition flex items-center gap-2">
-            <ArrowLeft size={16} /> Back to HQ
-        </Link>
-      </div>
+const getRankScore = (tier: string, rr: number) => {
+  const tierValue = RANK_VALUES[tier] || 0;
+  return (tierValue * 1000) + (rr || 0);
+};
 
-      {/* Tableau de classement */}
-      <div className="max-w-5xl mx-auto bg-slate-900/50 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
-        <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-                <thead>
-                    <tr className="bg-slate-950/50 text-xs text-slate-500 uppercase tracking-wider border-b border-slate-800">
-                        <th className="p-6 font-bold">Rank</th>
-                        <th className="p-6 font-bold">Player</th>
-                        <th className="p-6 font-bold">Tier / RR</th>
-                        <th className="p-6 font-bold text-center">Main</th>
-                        <th className="p-6 font-bold text-right">K/D Ratio</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/50">
-                    {leaderboardData.map((player, index) => (
-                        <tr key={index} className="hover:bg-slate-800/30 transition group">
-                            <td className="p-6">
-                                <div className={`w-8 h-8 flex items-center justify-center rounded-lg font-black text-lg ${
-                                    index === 0 ? 'bg-yellow-500 text-black shadow-[0_0_15px_rgba(234,179,8,0.5)]' : 
-                                    index === 1 ? 'bg-slate-300 text-black' : 
-                                    index === 2 ? 'bg-orange-700 text-white' : 
-                                    'text-slate-500 bg-slate-900'
-                                }`}>
-                                    {player.rank}
-                                </div>
-                            </td>
-                            <td className="p-6 font-bold text-white text-lg flex items-center gap-3">
-                                {/* Correction : utilisation de 'index' au lieu de 'player.index' */}
-                                {index === 0 && <Crown size={16} className="text-yellow-500" />}
-                                {player.name}
-                            </td>
-                            <td className="p-6">
-                                <div className="font-mono font-bold text-slate-200">{player.tier}</div>
-                                <div className="text-xs text-slate-500">{player.rr} RR</div>
-                            </td>
-                            <td className="p-6 text-center">
-                                <span className="px-3 py-1 bg-slate-800 rounded text-xs font-bold text-slate-400 border border-slate-700">
-                                    {player.main}
-                                </span>
-                            </td>
-                            <td className="p-6 text-right font-mono text-green-400 font-bold">
-                                {player.kda}
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-      </div>
-    </div>
+export default async function LeaderboardPage() {
+  console.log("\n--- 🔍 LEADERBOARD SERVER DEBUG ---");
+  
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
   );
+
+  // 1. Qui suis-je ?
+  const { data: { user } } = await supabase.auth.getUser();
+  console.log("1. User:", user?.id);
+
+  let squadProfiles: any[] = [];
+  let squadName = "Loading...";
+
+  if (user) {
+    // 2. Mon Profil
+    const { data: myProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+    if (myProfile) {
+        // 3. Squad Logic (Identique Dashboard)
+        if (myProfile.squad_id) {
+            console.log("3. Mode Squad:", myProfile.squad_id);
+            // Nom Squad
+            const { data: squadData } = await supabase
+                .from('squads')
+                .select('name')
+                .eq('id', myProfile.squad_id)
+                .single();
+            squadName = squadData?.name || "My Squad";
+
+            // Membres
+            const { data: members } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('squad_id', myProfile.squad_id);
+            squadProfiles = members || [myProfile];
+        } else {
+            console.log("3. Mode Solo");
+            squadName = "Solo Agent";
+            squadProfiles = [myProfile];
+        }
+    }
+  }
+
+  // 4. Récupérer les Live Ranks via API Valorant (pour avoir le vrai Rank actuel)
+  const squadMembers: SquadMember[] = squadProfiles
+    .filter(p => p.riot_id)
+    .map(p => ({
+        profileId: p.id,
+        username: p.username,
+        riotId: p.riot_id,
+        avatarUrl: p.avatar_url
+    }));
+
+  const squadMMR = await getSquadMMRHistory(squadMembers);
+
+  // 5. Fusionner les données (Profile DB + Live Rank API)
+  const leaderboardData = squadProfiles.map(profile => {
+      // On cherche si on a des données live
+      const liveData = squadMMR.find(m => m.username === profile.username);
+      const latestMatch = liveData?.data?.[0];
+
+      // On utilise les données live en priorité, sinon la DB
+      const currentRank = latestMatch?.currenttierpatched || profile.valo_rank || "Unranked";
+      const currentRR = latestMatch?.ranking_in_tier || profile.valo_rr || 0;
+
+      return {
+          ...profile,
+          valo_rank: currentRank,
+          valo_rr: currentRR,
+          // On garde les autres stats de la DB (KD, Role, etc)
+      };
+  });
+
+  // 6. Trier
+  const sortedLeaderboard = leaderboardData.sort((a, b) => {
+      const scoreA = getRankScore(a.valo_rank, a.valo_rr);
+      const scoreB = getRankScore(b.valo_rank, b.valo_rr);
+      return scoreB - scoreA;
+  });
+
+  console.log(`4. Leaderboard prêt: ${sortedLeaderboard.length} joueurs.`);
+  console.log("--- END DEBUG ---\n");
+
+  // On passe tout au Client Component
+  return <LeaderboardUI squadName={squadName} players={sortedLeaderboard} />;
 }
