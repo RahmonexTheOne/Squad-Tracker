@@ -98,3 +98,35 @@ export async function getSquadMatches(members: SquadMember[]) {
   // Tri par date (du plus récent au plus vieux)
   return allMatches.sort((a, b) => b.metadata.game_start - a.metadata.game_start);
 }
+
+export async function getSquadMMRHistory(members: SquadMember[]) {
+  const apiKey = process.env.HENRIK_API_KEY;
+  if (!apiKey) return [];
+
+  const headers = { 'Authorization': apiKey, 'User-Agent': 'SquadTracker/1.0' };
+
+  const promises = members.map(async (member) => {
+    if (!member.riotId) return null;
+    const [name, tag] = member.riotId.split('#');
+    
+    try {
+      const res = await fetch(`${BASE_URL}/v1/mmr-history/${REGION}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`, { 
+        headers, 
+        next: { revalidate: 3600 } // Cache 1h
+      });
+      const json = await res.json();
+      
+      // On retourne un objet propre avec le nom du joueur et son historique
+      return {
+        username: member.username,
+        data: json.data || [] // Liste des variations de MMR
+      };
+    } catch (e) {
+      console.error(`Erreur MMR pour ${member.username}`, e);
+      return null;
+    }
+  });
+
+  const results = await Promise.all(promises);
+  return results.filter(r => r !== null);
+}
