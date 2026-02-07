@@ -1,66 +1,59 @@
+import { NextRequest, NextResponse } from 'next/server';
 import { verifyKey } from 'discord-interactions';
 
-export async function POST(req: Request) {
-  // 1. On récupère les headers et le body
+export async function POST(req: NextRequest) {
+  // 1. Récupération rapide des données
   const signature = req.headers.get('X-Signature-Ed25519');
   const timestamp = req.headers.get('X-Signature-Timestamp');
-  const body = await req.text();
+  
+  // Important : Clone le body pour ne pas le "consommer" deux fois si besoin
+  const bodyText = await req.text();
 
-  // 2. Validation basique des inputs
-  if (!signature || !timestamp || !body || !process.env.DISCORD_PUBLIC_KEY) {
-    return new Response('Missing request data', { status: 401 });
+  // 2. Vérification d'urgence (si headers manquants)
+  if (!signature || !timestamp || !bodyText) {
+    return NextResponse.json({ error: 'Missing headers' }, { status: 401 });
   }
 
-  // 3. Vérification cryptographique
+  // 3. Vérification Crypto
   const isValidRequest = verifyKey(
-    body,
+    bodyText,
     signature,
     timestamp,
-    process.env.DISCORD_PUBLIC_KEY
+    process.env.DISCORD_PUBLIC_KEY!
   );
 
   if (!isValidRequest) {
-    return new Response('Bad request signature', { status: 401 });
+    console.error('❌ Signature invalide');
+    return NextResponse.json({ error: 'Bad request signature' }, { status: 401 });
   }
 
-  // 4. Parsing JSON
-  const interaction = JSON.parse(body);
+  // 4. Lecture du JSON
+  const interaction = JSON.parse(bodyText);
 
-  // --- LE PING (Validation URL) ---
+  // --- LE PING (Le moment critique) ---
   if (interaction.type === 1) {
-    console.log('✅ PING reçu. Réponse immédiate.');
+    console.log('✅ PING reçu. Envoi PONG JSON.');
     
-    // On utilise "Response" (standard Web) et non "NextResponse"
-    return new Response(JSON.stringify({ type: 1 }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    // Utilisation de NextResponse.json pour forcer une réponse rapide et propre
+    return NextResponse.json({ type: 1 });
   }
 
-  // --- COMMANDES SLASH ---
+  // --- COMMANDES ---
   if (interaction.type === 2) {
     const { name } = interaction.data;
-
+    
     if (name === 'profile') {
       const discordUser = interaction.member?.user || interaction.user;
-      const username = discordUser.username;
-      const userId = discordUser.id;
       const baseUrl = 'https://squad-tracker-snowy.vercel.app'; 
-
-      return new Response(JSON.stringify({
+      
+      return NextResponse.json({
         type: 4,
         data: {
-          content: `Hey <@${userId}> ! 🫡\nVoici ton dossier d'agent : ${baseUrl}/profile/${username}`
+          content: `Hey <@${discordUser.id}> ! 🫡\nVoici ton dossier : ${baseUrl}/profile/${discordUser.username}`
         }
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
       });
     }
   }
 
-  return new Response(JSON.stringify({ error: 'Unknown command' }), { 
-    status: 400,
-    headers: { 'Content-Type': 'application/json' }
-  });
+  return NextResponse.json({ error: 'Unknown command' }, { status: 400 });
 }
