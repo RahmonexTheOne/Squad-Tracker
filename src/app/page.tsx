@@ -1,6 +1,7 @@
-import { createServerClient } from '@supabase/ssr'; // 👈 INDISPENSABLE SUR LE SERVEUR
-import { cookies } from 'next/headers'; // 👈 POUR LIRE TA SESSION
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import Link from 'next/link';
+import SquadInviteBanner from '@/components/Dashboard/SquadInviteBanner';
 import { 
   LayoutDashboard, Users, Trophy, Activity, Crown, 
   ArrowUpRight, Clock, PlusCircle 
@@ -27,7 +28,6 @@ interface ActivityItem {
 export default async function Dashboard() {
   console.log("\n--- 🔍 DEBUG DASHBOARD START ---");
 
-  // 1. INITIALISATION SUPABASE CÔTÉ SERVEUR (C'est ça qui manquait !)
   const cookieStore = await cookies();
   
   const supabase = createServerClient(
@@ -35,33 +35,27 @@ export default async function Dashboard() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
+        getAll() { return cookieStore.getAll(); },
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             )
-          } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing user sessions.
-          }
+          } catch {}
         },
       },
     }
   );
 
-  // 2. Identification
-  // Maintenant, getUser() va réussir car il a accès aux cookies !
   const { data: { user } } = await supabase.auth.getUser();
-  console.log("1. User ID:", user?.id ? `✅ ${user.id}` : "❌ Undefined");
   
   let currentUserProfile = null;
   let squadProfiles: any[] = [];
+  let pendingNotifications: any[] = [];
 
+  // --- LOGIC START ---
   if (user) {
-    // 3. Récupérer MON profil
+    // 1. Get MY Profile
     const { data: myProfile } = await supabase
         .from('profiles')
         .select('*')
@@ -71,30 +65,46 @@ export default async function Dashboard() {
     currentUserProfile = myProfile;
     
     if(myProfile) {
-        console.log(`2. Profil chargé: ${myProfile.username}`);
-        console.log(`   - Riot ID: ${myProfile.riot_id}`);
-        console.log(`   - Squad ID: ${myProfile.squad_id}`);
+        // 2. FETCH NOTIFICATIONS (Invitations + Requests)
+        
+        // A. Invites sent TO me
+        const { data: invitations } = await supabase
+          .from('squad_invitations')
+          .select('id, squad_id, squads(name)')
+          .eq('receiver_id', user.id);
+        
+        if (invitations) {
+          invitations.forEach(inv => pendingNotifications.push({ ...inv, type: 'INVITE' }));
+        }
 
-        // 4. LOGIQUE SQUAD
+        // B. Join Requests sent TO my squad (if I am owner)
+        const { data: myOwnedSquads } = await supabase.from('squads').select('id').eq('owner_id', user.id);
+        if (myOwnedSquads && myOwnedSquads.length > 0) {
+            const squadIds = myOwnedSquads.map(s => s.id);
+            const { data: requests } = await supabase
+              .from('squad_requests')
+              .select('id, user_id, squad_id, profiles(username)')
+              .in('squad_id', squadIds);
+            
+            if (requests) {
+              requests.forEach(req => pendingNotifications.push({ ...req, type: 'REQUEST' }));
+            }
+        }
+
+        // 3. SQUAD LOGIC
         if (myProfile.squad_id) {
-            console.log("3. Mode Squad: Récupération des membres...");
             const { data: members } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('squad_id', myProfile.squad_id);
-            // Sécurité : si la requête échoue, on met au moins ton profil
             squadProfiles = members && members.length > 0 ? members : [myProfile];
-            console.log(`   -> ${squadProfiles.length} membres trouvés.`);
         } else {
-            console.log("3. Mode Solo: Pas de Squad ID.");
             squadProfiles = [myProfile];
         }
     }
-  } else {
-      console.log("⚠️ Toujours aucun utilisateur. Es-tu sûr d'être connecté ?");
   }
 
-  // 5. Construction de la liste pour l'API Valorant
+  // 4. Valorant API Prep
   const squadMembers: SquadMember[] = squadProfiles
     .filter((p: any) => p.riot_id) 
     .map((p: any) => ({
@@ -104,26 +114,18 @@ export default async function Dashboard() {
         avatarUrl: p.avatar_url || '/characters/default.png'
     }));
 
-  console.log(`4. Envoi API Valorant pour ${squadMembers.length} joueurs.`);
-
-  // 6. Récupération des Données Réelles
   const squadMMR = await getSquadMMRHistory(squadMembers);
-  console.log(`5. Données reçues: ${squadMMR.length} sets de données.`);
 
-  // --- CALCULS DU DASHBOARD ---
-
-  // A. PODIUM
+  // 5. Rankings & Activity logic
   const rankings = squadMMR.map(player => {
     const latest = player.data[0];
     const currentRR = latest ? latest.ranking_in_tier : 0;
     const currentTier = latest ? latest.currenttier : 0;
-    const tierName = latest ? latest.currenttierpatched : "Unranked";
     const score = (currentTier * 100) + currentRR;
     const memberInfo = squadMembers.find(m => m.username === player.username);
-
     return {
       username: player.username,
-      tierName,
+      tierName: latest ? latest.currenttierpatched : "Unranked",
       rr: currentRR,
       score,
       avatar: memberInfo?.avatarUrl,
@@ -132,7 +134,6 @@ export default async function Dashboard() {
     };
   }).sort((a, b) => b.score - a.score); 
 
-  // B. ACTIVITÉ
   const recentActivity: ActivityItem[] = [];
   squadMMR.forEach(player => {
     for (let i = 0; i < player.data.length - 1; i++) {
@@ -153,15 +154,12 @@ export default async function Dashboard() {
   recentActivity.sort((a, b) => b.date.getTime() - a.date.getTime());
   const latestActivity = recentActivity.slice(0, 5);
 
-  console.log("--- DEBUG DASHBOARD END ---\n");
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans pb-20 overflow-x-hidden">
       <Sidebar />
       
       <main className="md:ml-20 lg:ml-64 p-6 lg:p-12">
         
-        {/* HEADER */}
         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
                 <h1 className="text-4xl font-black text-white mb-2 flex items-center gap-3">
@@ -178,12 +176,20 @@ export default async function Dashboard() {
             </Link>
         </div>
 
-        {/* NOTIF DISCORD */}
-        {currentUserProfile && !currentUserProfile.discord_id && (
-            <DiscordBanner />
-        )}
+        {/* --- NOTIFICATIONS SECTION --- */}
+        <div className="space-y-4 mb-8">
+            {currentUserProfile && !currentUserProfile.discord_id && <DiscordBanner />}
+            
+            {/* Fix: We only render the banner if user.id exists to satisfy TypeScript */}
+            {pendingNotifications.length > 0 && user?.id && (
+                <SquadInviteBanner 
+                    notifications={pendingNotifications} 
+                    userId={user.id} 
+                />
+            )}
+        </div>
 
-        {/* --- PODIUM --- */}
+        {/* --- LEADERBOARD PODIUM --- */}
         {rankings.length > 0 ? (
             <div className="mb-12">
                 <div className="flex items-center gap-2 mb-6 justify-center md:justify-start">
@@ -192,8 +198,6 @@ export default async function Dashboard() {
                 </div>
                 
                 <div className="flex flex-col md:flex-row items-end justify-center gap-4 md:gap-8 h-auto md:h-96 pt-10">
-                    
-                    {/* 2ND PLACE */}
                     {rankings[1] && (
                         <div className="order-2 md:order-1 flex flex-col items-center animate-in slide-in-from-bottom-8 duration-700 delay-100">
                              <div className="relative mb-2">
@@ -211,7 +215,6 @@ export default async function Dashboard() {
                         </div>
                     )}
 
-                    {/* 1ST PLACE */}
                     {rankings[0] && (
                         <div className="order-1 md:order-2 flex flex-col items-center z-10 animate-in slide-in-from-bottom-12 duration-700">
                              <div className="relative mb-2">
@@ -231,7 +234,6 @@ export default async function Dashboard() {
                         </div>
                     )}
 
-                    {/* 3RD PLACE */}
                     {rankings[2] && (
                         <div className="order-3 flex flex-col items-center animate-in slide-in-from-bottom-4 duration-700 delay-200">
                              <div className="relative mb-2">
@@ -248,14 +250,12 @@ export default async function Dashboard() {
                              </div>
                         </div>
                     )}
-
                 </div>
             </div>
         ) : (
              <div className="mb-12 bg-slate-900/30 border border-slate-800 border-dashed rounded-3xl p-8 text-center">
                 <Users className="mx-auto mb-2 opacity-50 text-slate-500" size={32}/>
                 <p className="text-slate-500">No active agents found.</p>
-                <p className="text-xs text-slate-600 mb-4">Link your Riot ID in Settings to appear on the dashboard.</p>
                 <Link href="/settings">
                     <button className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold transition flex items-center gap-2 mx-auto">
                         <PlusCircle size={16}/> Link Riot ID
@@ -264,7 +264,7 @@ export default async function Dashboard() {
              </div>
         )}
 
-        {/* --- GRAPHIQUES --- */}
+        {/* --- CHARTS & ACTIVITY --- */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div className="xl:col-span-2 space-y-6">
                 {squadMMR.length > 0 ? (
@@ -272,7 +272,7 @@ export default async function Dashboard() {
                 ) : (
                     <div className="h-[300px] bg-slate-900/30 rounded-3xl border border-slate-800 border-dashed flex items-center justify-center text-slate-500">
                         <Activity className="mb-2 mr-2 opacity-50"/> 
-                        No Match Data Available for Chart
+                        No Match Data Available
                     </div>
                 )}
             </div>
@@ -306,7 +306,7 @@ export default async function Dashboard() {
                     ) : (
                         <div className="text-center py-10 text-slate-500 text-sm">
                             <Trophy size={32} className="mx-auto mb-2 opacity-20"/>
-                            No rank ups detected recently.<br/>Time to grind!
+                            No rank ups detected recently.
                         </div>
                     )}
                 </div>
