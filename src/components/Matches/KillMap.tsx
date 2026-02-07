@@ -1,76 +1,99 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+
 interface KillMapProps {
   mapName: string; // "Bind", "Haven"...
-  deaths: Array<{ x: number; y: number; time: number }>; // Coordonnées des morts
+  deaths: Array<{ x: number; y: number; color: string; victimName: string }>; 
+}
+
+interface MapData {
+  uuid: string;
+  displayName: string;
+  xMultiplier: number;
+  yMultiplier: number;
+  xScalarToAdd: number;
+  yScalarToAdd: number;
+  displayIcon: string;
 }
 
 export default function KillMap({ mapName, deaths }: KillMapProps) {
-  // URL générique pour les minimaps (HenrikDev ou une autre source stable)
-  // Astuce : On utilise les noms en minuscule pour l'URL
-  const mapUrl = `https://media.valorant-api.com/maps/${getMapUuid(mapName)}/displayicon.png`;
+  const [mapData, setMapData] = useState<MapData | null>(null);
+
+  // 1. On récupère les données EXACTES de la map (Multipliers) depuis l'API officielle
+  useEffect(() => {
+    async function fetchMapData() {
+      try {
+        const res = await fetch('https://valorant-api.com/v1/maps');
+        const json = await res.json();
+        // On cherche la map par son nom
+        const found = json.data.find((m: any) => m.displayName.toLowerCase() === mapName.toLowerCase());
+        
+        if (found) {
+          setMapData({
+            uuid: found.uuid,
+            displayName: found.displayName,
+            xMultiplier: found.xMultiplier,
+            yMultiplier: found.yMultiplier,
+            xScalarToAdd: found.xScalarToAdd,
+            yScalarToAdd: found.yScalarToAdd,
+            displayIcon: found.displayIcon
+          });
+        }
+      } catch (e) {
+        console.error("Erreur chargement map", e);
+      }
+    }
+    fetchMapData();
+  }, [mapName]);
+
+  if (!mapData) return <div className="w-full aspect-square bg-slate-900 rounded-xl animate-pulse"></div>;
 
   return (
-    <div className="relative w-full aspect-square bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
+    <div className="relative w-full aspect-square bg-slate-900 rounded-xl overflow-hidden border border-slate-700 group">
       {/* Image de la Map */}
-      <img src={mapUrl} alt={mapName} className="w-full h-full object-contain opacity-60" />
+      <img 
+        src={mapData.displayIcon} 
+        alt={mapName} 
+        className="w-full h-full object-contain opacity-60 group-hover:opacity-40 transition duration-300" 
+      />
 
-      {/* Les Morts (X rouges) */}
+      {/* Les Morts */}
       {deaths.map((death, i) => {
-        // Conversion approximative des coordonnées jeu -> CSS (0-100%)
-        // Note: C'est complexe d'être pixel perfect sans les données de calibration de chaque map
-        // Ici on suppose un mapping normalisé standard
-        const cssX = mapXToCss(death.x, mapName); 
-        const cssY = mapYToCss(death.y, mapName);
+        // --- FORMULE MAGIQUE DE RIOT ---
+        // C'est la seule façon d'avoir les points au bon endroit
+        // Note: Sur la minimap, X et Y sont souvent inversés ou pivotés
+        const xRaw = death.y * mapData.xMultiplier + mapData.xScalarToAdd;
+        const yRaw = death.x * mapData.yMultiplier + mapData.yScalarToAdd;
 
-        if(!cssX || !cssY) return null;
+        // On convertit en pourcentage CSS (0 to 1) -> (0% to 100%)
+        // On clamp entre 2% et 98% pour ne pas que ça sorte du cadre
+        const cssLeft = Math.min(Math.max(xRaw * 100, 2), 98); 
+        const cssTop = Math.min(Math.max(yRaw * 100, 2), 98);
 
         return (
           <div 
             key={i}
-            className="absolute text-red-500 font-bold text-xs transform -translate-x-1/2 -translate-y-1/2 drop-shadow-md select-none"
-            style={{ left: cssX, top: cssY }}
-            title={`Death at ${death.time}ms`}
+            className={`
+                absolute w-2.5 h-2.5 transform -translate-x-1/2 -translate-y-1/2 
+                font-bold text-[10px] flex items-center justify-center cursor-help z-10
+                hover:scale-150 transition
+            `}
+            style={{ 
+                left: `${cssLeft}%`, 
+                top: `${cssTop}%`,
+                color: death.color // Couleur spécifique du joueur
+            }}
+            title={`Dead: ${death.victimName}`}
           >
             x
           </div>
         );
       })}
       
-      <div className="absolute bottom-2 right-2 text-[10px] text-slate-500 bg-black/50 px-2 rounded">
-        Death Locations (Approx.)
+      <div className="absolute bottom-2 right-2 text-[10px] text-slate-500 bg-black/50 px-2 rounded backdrop-blur-sm">
+        {mapName}
       </div>
     </div>
   );
-}
-
-// --- HELPERS (Simplifiés pour l'exemple) ---
-// Idéalement, il faut une liste de UUIDs, mais voici une astuce pour l'image
-function getMapUuid(mapName: string) {
-    // Mapping manuel des ID de map (Valorant-API)
-    const maps: Record<string, string> = {
-        "Ascent": "7eaecc1b-4337-bbf6-6ab9-04b8f06b3319",
-        "Split": "d960549e-485c-e861-8d71-aa9d1aed12a2",
-        "Fracture": "b529448b-4d84-4342-b050-56367e432a68",
-        "Bind": "2c9d57ec-4431-9c5e-2939-8f9ef6dd5cba",
-        "Breeze": "2fb9a4fd-47b8-4e7d-a969-74b4046ebd53",
-        "Lotus": "2fe4ed3a-450a-948b-6d6b-e89a78e680a9",
-        "Pearl": "fd267378-4d1d-484f-44a7-b9db8135b537",
-        "Icebox": "e2ad5c54-4114-a870-9641-8ea21279579a",
-        "Haven": "2bee0dc9-4ffe-519b-1cbd-7fbe763a6047",
-        "Sunset": "92584fbe-486a-b1b2-9faa-39b0f486b498"
-    };
-    return maps[mapName] || maps["Ascent"]; // Fallback
-}
-
-// Fonction de conversion (Nécessite calibration par map en théorie)
-// On utilise une formule générique ici qui marche "à peu près" pour la démo
-function mapXToCss(gameX: number, mapName: string) {
-    // Les coordonnées vont généralement de -X à +X. On normalise.
-    // C'est très approximatif sans les multipliers JSON de Riot.
-    return `${((gameX + 15000) / 30000) * 100}%`; 
-}
-function mapYToCss(gameY: number, mapName: string) {
-    // L'axe Y est inversé dans le jeu vs CSS
-    return `${((15000 - gameY) / 30000) * 100}%`;
 }

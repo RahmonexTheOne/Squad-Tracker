@@ -9,24 +9,35 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// 👇 DÉFINIS TA SQUAD ICI (Liste blanche)
+// Mets ici UNIQUEMENT les pseudos des gens qui sont OFFICIELLEMENT dans ta squad.
+// Les autres (comme Lallou) seront ignorés.
+const OFFICIAL_SQUAD_USERNAMES = [
+  'Rahmonex', 
+  'AutreMembre1', // Remplace par les vrais pseudos
+  // 'Lallou', // Elle est commentée, donc elle n'apparaîtra pas !
+];
+
 export default async function MatchesPage() {
   
-  // 1. Récupérer la Squad (Simulation ou requête réelle)
-  // Ici je prends tous les profils qui ont un Riot ID pour l'exemple
-  // Dans le futur : .from('squad_members').select('profiles(*)')
-  const { data: profiles } = await supabase
+  // 1. Récupérer TOUS les profils qui ont un Riot ID
+  const { data: allProfiles } = await supabase
     .from('profiles')
     .select('id, username, riot_id, avatar_url')
     .not('riot_id', 'is', null);
 
-  const squadMembers: SquadMember[] = (profiles || []).map((p: any) => ({
-      profileId: p.id,
-      username: p.username,
-      riotId: p.riot_id,
-      avatarUrl: p.avatar_url
-  }));
+  // 2. FILTRAGE STRICT
+  // On ne garde que ceux qui sont dans la liste OFFICIAL_SQUAD_USERNAMES
+  const squadMembers: SquadMember[] = (allProfiles || [])
+    .filter((p: any) => OFFICIAL_SQUAD_USERNAMES.includes(p.username)) // 👈 C'EST ICI QUE LA MAGIE OPÈRE
+    .map((p: any) => ({
+        profileId: p.id,
+        username: p.username,
+        riotId: p.riot_id,
+        avatarUrl: p.avatar_url
+    }));
 
-  // 2. Récupérer les matchs fusionnés
+  // 3. Récupérer les matchs fusionnés uniquement pour ces membres
   const matches = await getSquadMatches(squadMembers);
 
   return (
@@ -46,7 +57,7 @@ export default async function MatchesPage() {
                 </p>
             </div>
             
-            {/* Squad Avatars */}
+            {/* Squad Avatars (Active Squad) */}
             <div className="flex items-center gap-4 mt-4 md:mt-0">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Active Squad</span>
                 <div className="flex -space-x-2">
@@ -55,7 +66,7 @@ export default async function MatchesPage() {
                             key={m.profileId} 
                             src={m.avatarUrl || '/characters/default.png'} 
                             title={m.username}
-                            className="w-8 h-8 rounded-full border border-slate-900 bg-slate-800"
+                            className="w-10 h-10 rounded-full border-2 border-slate-950 bg-slate-800 object-cover"
                         />
                     ))}
                 </div>
@@ -75,8 +86,8 @@ export default async function MatchesPage() {
             ) : (
                 <div className="text-center py-20 text-slate-500 bg-slate-900/30 rounded-3xl border border-slate-800 border-dashed">
                     <Users size={48} className="mx-auto mb-4 opacity-50"/>
-                    <p className="text-lg">Aucun match récent trouvé pour la squad.</p>
-                    <p className="text-sm">Vérifiez que les Riot IDs sont bien configurés.</p>
+                    <p className="text-lg">Aucun match récent trouvé pour la squad active.</p>
+                    <p className="text-sm">Vérifiez que les membres de la liste blanche ont bien lié leur Riot ID.</p>
                 </div>
             )}
         </div>
