@@ -2,18 +2,24 @@ import { verifyKey } from "discord-interactions";
 
 export const runtime = "edge";
 
-// Some Discord/infra probes may use these methods during verification.
-// Returning 200 prevents the generic "could not be verified" error.
-export async function GET() {
+// Discord / infra probes during validation:
+export function GET() {
   return new Response("OK", { status: 200 });
 }
 
-export async function HEAD() {
+export function HEAD() {
   return new Response(null, { status: 200 });
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 200 });
+export function OPTIONS() {
+  return new Response(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, GET, HEAD, OPTIONS",
+      "Access-Control-Allow-Headers": "*",
+    },
+  });
 }
 
 export async function POST(req: Request) {
@@ -30,7 +36,6 @@ export async function POST(req: Request) {
 
   const publicKey = process.env.DISCORD_PUBLIC_KEY;
   if (!publicKey) {
-    // Misconfigured env var will break validation in prod.
     return new Response(JSON.stringify({ error: "Missing DISCORD_PUBLIC_KEY" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
@@ -38,7 +43,6 @@ export async function POST(req: Request) {
   }
 
   const isValidRequest = verifyKey(body, signature, timestamp, publicKey);
-
   if (!isValidRequest) {
     return new Response(JSON.stringify({ error: "Bad request signature" }), {
       status: 401,
@@ -48,7 +52,7 @@ export async function POST(req: Request) {
 
   const interaction = JSON.parse(body);
 
-  // PING -> PONG (must be an immediate 200 with {"type":1})
+  // PING => must be immediate 200 with {"type":1}
   if (interaction.type === 1) {
     return new Response(JSON.stringify({ type: 1 }), {
       status: 200,
@@ -56,7 +60,6 @@ export async function POST(req: Request) {
     });
   }
 
-  // ... handle other commands
   return new Response(JSON.stringify({ error: "Unknown command" }), {
     status: 400,
     headers: { "Content-Type": "application/json" },
