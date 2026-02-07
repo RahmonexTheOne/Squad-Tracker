@@ -2,7 +2,14 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
-  // 1. On prépare la réponse
+  // 0. SECURITÉ API : On laisse passer tout ce qui commence par /api
+  // C'est crucial pour que Discord puisse parler au bot sans être connecté
+  const isApi = request.nextUrl.pathname.startsWith('/api');
+  if (isApi) {
+    return NextResponse.next();
+  }
+
+  // 1. On prépare la réponse Supabase
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -42,8 +49,8 @@ export async function middleware(request: NextRequest) {
   const isAuthPage = request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/signup');
   const isCallback = request.nextUrl.pathname.startsWith('/auth');
 
-  // Si pas connecté et page protégée -> Login
-  if (!user && !isAuthPage && !isCallback) {
+  // Si pas connecté et page protégée (ET que ce n'est pas une API) -> Login
+  if (!user && !isAuthPage && !isCallback && !isApi) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
@@ -57,6 +64,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|characters|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // J'ai ajouté "|api" dans la liste des exclusions ci-dessous pour que le middleware ignore ces routes
+    '/((?!_next/static|_next/image|favicon.ico|characters|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
