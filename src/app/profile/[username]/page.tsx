@@ -3,10 +3,12 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
+import { getLeagueStats } from '@/lib/league';
 
 import CharacterImage from '@/components/CharacterImage';
 import Sidebar from '@/components/Sidebar';
-import ValorantCard from '@/components/ValorantCard'; // 👈 On importe notre nouveau bijou
+import ValorantCard from '@/components/ValorantCard';
+import LeagueCard from '@/components/LeagueCard'; // 👈 IMPORTED LEAGUE CARD
 import { getDiscordStatus } from '@/lib/discordWidget';
 import { getValorantStats } from '@/lib/valorant';
 
@@ -23,7 +25,7 @@ export default async function ProfilePage({ params }: PageProps) {
   const resolvedParams = await params;
   const username = decodeURIComponent(resolvedParams.username);
 
-  // --- A. RECUPERATION SUPABASE ---
+  // --- A. SUPABASE FETCH ---
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
@@ -34,22 +36,36 @@ export default async function ProfilePage({ params }: PageProps) {
       return <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">User not found</div>;
   }
 
-  // --- B. RADAR DISCORD ---
+  // --- B. DISCORD RADAR ---
   let discordStatus = null;
   const serverId = process.env.NEXT_PUBLIC_DISCORD_SERVER_ID;
   if (profile?.username && serverId) {
       discordStatus = await getDiscordStatus(serverId, profile.username);
   }
 
-  // --- C. RECUPERATION VALORANT (BRUTE) ---
+  // --- C. VALORANT FETCH ---
   let valoData = null;
   if (profile.riot_id && profile.riot_id.includes('#')) {
       const [riotName, riotTag] = profile.riot_id.split('#');
-      // On appelle la fonction mise à jour qui récupère TOUT (Matchs + Peak + Compte)
-      valoData = await getValorantStats(riotName, riotTag);
+      try {
+        valoData = await getValorantStats(riotName, riotTag);
+      } catch (e) {
+        console.error("Valorant fetch error", e);
+      }
   }
 
-  // --- CONFIGURATION VISUELLE ---
+  // --- D. LEAGUE OF LEGENDS FETCH ---
+  let lolData = null;
+  if (profile.riot_id && profile.riot_id.includes('#')) {
+      const [riotName, riotTag] = profile.riot_id.split('#');
+      try {
+        lolData = await getLeagueStats(riotName, riotTag);
+      } catch (e) {
+        console.error("League fetch error", e);
+      }
+  }
+
+  // --- VISUAL CONFIG ---
   const avatarDisplay = profile.avatar_url || "/characters/default.png";
   const characterPath = `/characters/${username}.png`;
   const fallbackImage = "/characters/default.png"; 
@@ -137,24 +153,13 @@ export default async function ProfilePage({ params }: PageProps) {
             {/* STATS GRID */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-20 mt-20 lg:mt-0 items-start">
                 
-                {/* 🔴 VALORANT (Composant Intelligent) */}
+                {/* 🔴 VALORANT CARD */}
                 <ValorantCard riotId={profile.riot_id} data={valoData} />
 
-                {/* 🟡 LEAGUE */}
-                <div className="bg-gradient-to-b from-slate-900/80 to-slate-950/90 backdrop-blur-md border border-slate-800/60 rounded-3xl p-6 relative overflow-hidden group hover:border-yellow-500/50 transition duration-300 shadow-xl opacity-60 grayscale hover:grayscale-0">
-                    <div className="flex justify-between items-start mb-6 relative">
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 bg-yellow-500/10 rounded-xl text-yellow-500"><Shield size={24} /></div>
-                            <h2 className="text-xl font-bold text-white">League</h2>
-                        </div>
-                        <span className="text-yellow-500 font-mono font-black text-2xl">--</span>
-                    </div>
-                    <div className="space-y-4 relative">
-                        <p className="text-center text-slate-500 text-sm py-8">Coming Soon...</p>
-                    </div>
-                </div>
+                {/* 🟡 LEAGUE CARD */}
+                <LeagueCard data={lolData} />
 
-                {/* 🔵 STEAM */}
+                {/* 🔵 STEAM CARD */}
                 <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800/60 rounded-3xl p-6 flex flex-col shadow-xl relative z-20 lg:z-0">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500"><Gamepad2 size={24} /></div>
