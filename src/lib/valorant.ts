@@ -1,6 +1,9 @@
+// src/lib/valorant.ts
+
 const BASE_URL = 'https://api.henrikdev.xyz/valorant';
 const REGION = 'eu';
 
+// --- 1. FONCTION EXISTANTE (PROFIL JOUEUR) ---
 export async function getValorantStats(name: string, tag: string) {
   const apiKey = process.env.HENRIK_API_KEY;
 
@@ -45,4 +48,70 @@ export async function getValorantStats(name: string, tag: string) {
     console.error("Erreur critique Valorant:", error);
     return null;
   }
+}
+
+// --- 2. NOUVEAU : GESTION DE LA SQUAD (MATCHES PAGE) ---
+
+// Structure pour identifier un membre de la squad
+export interface SquadMember {
+  profileId: string;
+  username: string;
+  riotId: string; // "Rahmonex#EUW"
+  avatarUrl: string;
+}
+
+// Fonction pour récupérer et fusionner les matchs de toute la squad
+export async function getSquadMatches(members: SquadMember[]) {
+  const apiKey = process.env.HENRIK_API_KEY;
+  
+  if (!apiKey) {
+    console.error("❌ ERREUR: HENRIK_API_KEY manquante pour getSquadMatches.");
+    return [];
+  }
+
+  const headers = { 
+    'Authorization': apiKey, 
+    'User-Agent': 'SquadTracker/1.0' 
+  };
+
+  // 1. On récupère les matchs de chaque membre en parallèle
+  const promises = members.map(async (member) => {
+    if (!member.riotId || !member.riotId.includes('#')) return [];
+    
+    const [name, tag] = member.riotId.split('#');
+    
+    try {
+      // On récupère les 5 derniers matchs de chacun (size=5 pour éviter de spammer l'API si la squad est grande)
+      const res = await fetch(`${BASE_URL}/v3/matches/${REGION}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?size=5`, { 
+        headers, 
+        next: { revalidate: 300 } // Cache 5 min
+      });
+      const data = await res.json();
+      return data.data || [];
+    } catch (e) {
+      console.error(`Erreur fetch squad pour ${member.username}`, e);
+      return [];
+    }
+  });
+
+  const results = await Promise.all(promises);
+
+  // 2. Fusion et Dé-duplication
+  // Si vous avez joué ensemble, HenrikDev renvoie le même match ID pour chacun.
+  // On utilise un Set pour ne garder qu'une seule copie du match.
+  const allMatches: any[] = [];
+  const processedMatchIds = new Set();
+
+  // On met tout à plat
+  results.flat().forEach((match) => {
+    if (match && match.metadata && match.metadata.matchid) {
+      if (!processedMatchIds.has(match.metadata.matchid)) {
+        processedMatchIds.add(match.metadata.matchid);
+        allMatches.push(match);
+      }
+    }
+  });
+
+  // 3. Tri final par date (du plus récent au plus vieux)
+  return allMatches.sort((a, b) => b.metadata.game_start - a.metadata.game_start);
 }
