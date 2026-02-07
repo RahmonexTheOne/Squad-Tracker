@@ -1,40 +1,38 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { verifyKey } from 'discord-interactions';
 
-export async function POST(req: NextRequest) {
-  // 1. Récupération rapide des données
+// 🔥 LA LIGNE MAGIQUE : Force le mode "Edge" (Démarrage en 0.1s)
+export const runtime = 'edge'; 
+
+export async function POST(req: Request) {
+  // 1. Récupération des données (API Web Standard pour le Edge)
   const signature = req.headers.get('X-Signature-Ed25519');
   const timestamp = req.headers.get('X-Signature-Timestamp');
-  
-  // Important : Clone le body pour ne pas le "consommer" deux fois si besoin
-  const bodyText = await req.text();
+  const body = await req.text();
 
-  // 2. Vérification d'urgence (si headers manquants)
-  if (!signature || !timestamp || !bodyText) {
-    return NextResponse.json({ error: 'Missing headers' }, { status: 401 });
+  // 2. Vérification rapide
+  if (!signature || !timestamp || !body) {
+    return NextResponse.json({ error: 'Bad request' }, { status: 401 });
   }
 
   // 3. Vérification Crypto
+  // Note: discord-interactions fonctionne très bien sur le Edge
   const isValidRequest = verifyKey(
-    bodyText,
+    body,
     signature,
     timestamp,
     process.env.DISCORD_PUBLIC_KEY!
   );
 
   if (!isValidRequest) {
-    console.error('❌ Signature invalide');
     return NextResponse.json({ error: 'Bad request signature' }, { status: 401 });
   }
 
-  // 4. Lecture du JSON
-  const interaction = JSON.parse(bodyText);
+  // 4. Traitement
+  const interaction = JSON.parse(body);
 
-  // --- LE PING (Le moment critique) ---
+  // --- PING (Validation URL) ---
   if (interaction.type === 1) {
-    console.log('✅ PING reçu. Envoi PONG JSON.');
-    
-    // Utilisation de NextResponse.json pour forcer une réponse rapide et propre
     return NextResponse.json({ type: 1 });
   }
 
