@@ -2,21 +2,18 @@
 
 import { useState } from 'react';
 import Sidebar from '@/components/Sidebar';
-import PodiumCharacter from '@/components/PodiumCharacter';
 import Link from 'next/link'; 
 import { 
-  Trophy, Crown, ChevronDown, ChevronUp, 
-  Swords, Shield, User, Skull, Crosshair, Activity, X 
+  Trophy, Swords, Shield, Crosshair, ChevronDown, ChevronUp, Skull, Activity, Star
 } from 'lucide-react';
 
 export default function LeaderboardUI({ squadName, players }: { squadName: string, players: any[] }) {
   const [activeTab, setActiveTab] = useState<'valorant' | 'lol'>('valorant');
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
-  const [selectedUser, setSelectedUser] = useState<any | null>(null);
 
-  // Séparation du Top 3
-  const top3 = players.slice(0, 3);
-  const restOfList = players.slice(3);
+  const toggleExpand = (id: string) => {
+    setExpandedUser(expandedUser === id ? null : id);
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans">
@@ -24,160 +21,263 @@ export default function LeaderboardUI({ squadName, players }: { squadName: strin
       
       <main className="md:ml-20 lg:ml-64 min-h-screen pb-20 overflow-x-hidden relative">
         
-        {/* HEADER */}
-        <div className="relative h-72 bg-gradient-to-br from-indigo-900 via-slate-900 to-slate-950 flex flex-col items-center justify-center overflow-hidden">
-            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10"></div>
-            <div className="absolute top-0 w-full h-full bg-gradient-to-t from-slate-950 to-transparent"></div>
+        {/* --- HEADER --- */}
+        <div className="relative h-64 bg-gradient-to-r from-indigo-900 via-slate-900 to-slate-950 flex flex-col items-center justify-center overflow-hidden border-b border-white/5">
+            <div className="absolute inset-0 bg-[url('https://cdn.pixabay.com/photo/2017/08/30/01/05/milky-way-2695569_1280.jpg')] bg-cover bg-center opacity-20"></div>
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent"></div>
             
             <div className="z-10 text-center animate-in slide-in-from-top-4 duration-700">
                 <div className="flex items-center justify-center gap-3 mb-2">
-                    <Trophy size={32} className="text-yellow-500 fill-yellow-500"/> 
-                    <span className="text-yellow-500 font-bold tracking-widest text-sm uppercase">Leaderboard</span>
+                    <div className="p-2 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                        <Trophy size={24} className="text-yellow-500 fill-yellow-500"/> 
+                    </div>
+                    <span className="text-yellow-500 font-bold tracking-widest text-sm uppercase">Squad Ranking</span>
                 </div>
-                <h1 className="text-5xl md:text-6xl font-black text-white tracking-tighter uppercase drop-shadow-2xl">
+                <h1 className="text-4xl md:text-5xl font-black text-white tracking-tighter uppercase drop-shadow-2xl">
                     {squadName}
                 </h1>
-                <p className="text-slate-400 mt-2">Who is the real carry?</p>
             </div>
 
-            <div className="absolute bottom-8 z-20 flex bg-slate-900/50 backdrop-blur-md p-1 rounded-2xl border border-white/10">
-                <button onClick={() => setActiveTab('valorant')} className={`px-6 py-2 rounded-xl font-bold flex items-center gap-2 transition-all ${activeTab === 'valorant' ? 'bg-red-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+            <div className="absolute -bottom-6 z-20 flex bg-slate-950/80 backdrop-blur-md p-1.5 rounded-2xl border border-slate-800 shadow-2xl">
+                <button 
+                    onClick={() => setActiveTab('valorant')}
+                    className={`px-6 py-2 rounded-xl font-bold flex items-center gap-2 transition-all duration-300 ${activeTab === 'valorant' ? 'bg-[#FF4655] text-white shadow-lg shadow-red-500/20' : 'text-slate-400 hover:text-white'}`}
+                >
                     <Swords size={16}/> VALORANT
                 </button>
-                <button onClick={() => setActiveTab('lol')} className={`px-6 py-2 rounded-xl font-bold flex items-center gap-2 transition-all ${activeTab === 'lol' ? 'bg-yellow-500 text-black shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+                <button 
+                    onClick={() => setActiveTab('lol')}
+                    className={`px-6 py-2 rounded-xl font-bold flex items-center gap-2 transition-all duration-300 ${activeTab === 'lol' ? 'bg-[#C8AA6E] text-black shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                >
                     <Shield size={16}/> LEAGUE
                 </button>
             </div>
         </div>
 
-        <div className="p-6 lg:p-12 max-w-7xl mx-auto -mt-4 relative z-20">
+        <div className="p-6 lg:p-12 max-w-5xl mx-auto mt-12 relative z-20">
+            
             {activeTab === 'lol' ? (
                 <div className="bg-slate-900/30 border border-slate-800 border-dashed rounded-3xl p-20 text-center">
                     <Shield size={64} className="mx-auto mb-6 text-slate-700"/>
                     <h2 className="text-2xl font-bold text-white mb-2">Summoner's Rift Offline</h2>
-                    <span className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-4 py-1 rounded-full text-xs font-bold uppercase">Coming Soon</span>
+                    <span className="inline-block bg-[#C8AA6E]/10 text-[#C8AA6E] border border-[#C8AA6E]/20 px-4 py-1 rounded-full text-xs font-bold tracking-widest uppercase">
+                        Coming Soon
+                    </span>
                 </div>
             ) : players.length === 0 ? (
                 <div className="text-center py-20 text-slate-500">No active agents found in this squad.</div>
             ) : (
-                <>
-                    {/* PODIUM */}
-                    <div className="flex flex-col md:flex-row items-end justify-center gap-6 md:gap-16 mb-24 min-h-[300px]">
-                        {/* 2ND */}
-                        {top3[1] && <PodiumStep player={top3[1]} rank={2} onClick={setSelectedUser} />}
-                        {/* 1ST */}
-                        {top3[0] && <PodiumStep player={top3[0]} rank={1} onClick={setSelectedUser} />}
-                        {/* 3RD */}
-                        {top3[2] && <PodiumStep player={top3[2]} rank={3} onClick={setSelectedUser} />}
-                    </div>
-
-                    {/* LISTE */}
-                    <div className="space-y-4 max-w-5xl mx-auto">
-                        {restOfList.map((player, index) => {
-                            const rank = index + 4;
-                            const isExpanded = expandedUser === player.id;
-                            return (
-                                <div key={player.id} onClick={() => setExpandedUser(isExpanded ? null : player.id)}
-                                    className={`bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 ${isExpanded ? 'ring-1 ring-indigo-500 bg-slate-900 shadow-2xl' : 'hover:bg-slate-800/80'}`}>
-                                    <div className="p-4 flex items-center justify-between">
-                                        <div className="flex items-center gap-6">
-                                            <div className="w-10 text-center font-black text-xl text-slate-600">#{rank}</div>
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-14 h-14 rounded-xl bg-slate-800 overflow-hidden border border-slate-700">
-                                                    <img src={player.avatar_url || '/characters/default.png'} className="w-full h-full object-cover"/>
-                                                </div>
-                                                <div>
-                                                    <h3 className={`font-bold text-lg ${isExpanded ? 'text-indigo-400' : 'text-white'}`}>{player.username}</h3>
-                                                    <p className="text-xs text-slate-500">{player.riot_id || 'No ID'}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-6">
-                                            <div className="text-right hidden sm:block">
-                                                <p className="font-bold text-white">{player.valo_rank}</p>
-                                                <p className="text-xs text-slate-500">{player.valo_rr} RR</p>
-                                            </div>
-                                            <div className={`p-2 rounded-full transition ${isExpanded ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-500'}`}>
-                                                {isExpanded ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {isExpanded && <PlayerDetails player={player} />}
-                                </div>
-                            );
-                        })}
-                    </div>
-                </>
+                <div className="space-y-6">
+                    {/* --- LISTE DES JOUEURS --- */}
+                    {players.map((player, index) => (
+                        <LeaderboardCard 
+                            key={player.id} 
+                            player={player} 
+                            rank={index + 1} 
+                            isExpanded={expandedUser === player.id} 
+                            onToggle={() => toggleExpand(player.id)}
+                        />
+                    ))}
+                </div>
             )}
         </div>
-
-        {/* MODAL */}
-        {selectedUser && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in" onClick={() => setSelectedUser(null)}>
-                <div className="bg-slate-900 border border-slate-700 rounded-3xl p-8 max-w-md w-full relative shadow-2xl" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => setSelectedUser(null)} className="absolute top-4 right-4 text-slate-500 hover:text-white"><X size={24}/></button>
-                    <div className="text-center mb-8">
-                        <div className="w-24 h-24 mx-auto bg-slate-800 rounded-full border-4 border-indigo-500 overflow-hidden mb-4 shadow-lg">
-                            <img src={selectedUser.avatar_url || '/characters/default.png'} className="w-full h-full object-cover"/>
-                        </div>
-                        <h2 className="text-2xl font-black text-white">{selectedUser.username}</h2>
-                        <p className="text-indigo-400 font-bold text-sm">{selectedUser.valo_rank} • {selectedUser.valo_rr} RR</p>
-                    </div>
-                    <PlayerDetails player={selectedUser} modal={true} />
-                </div>
-            </div>
-        )}
       </main>
     </div>
   );
 }
 
-function PodiumStep({ player, rank, onClick }: any) {
-    const isFirst = rank === 1;
+// --- COMPOSANT CARTE INDIVIDUELLE (AVEC LOGIQUE DE CALCUL) ---
+function LeaderboardCard({ player, rank, isExpanded, onToggle }: any) {
+    
+    // 1. CALCUL DES STATS (Identique à ValorantCard)
+    const calculateStats = () => {
+        const data = player.fullStats;
+        if (!data || !data.matches || data.matches.length === 0) return null;
+
+        let totalKills = 0, totalDeaths = 0, totalWins = 0, totalShots = 0, totalHeadshots = 0, totalScore = 0;
+        const lastGames: string[] = [];
+        const agentsPlayed: Record<string, { count: number, img: string }> = {};
+        
+        // Nettoyage du Riot ID pour comparaison
+        const [myName] = player.riot_id?.split('#') || ["", ""];
+
+        data.matches.forEach((match: any) => {
+            const p = match.players.all_players.find((pl: any) => pl.name.toLowerCase() === myName.toLowerCase());
+            if (p) {
+                totalKills += p.stats.kills;
+                totalDeaths += p.stats.deaths;
+                totalScore += p.stats.score;
+                const shots = p.stats.headshots + p.stats.bodyshots + p.stats.legshots;
+                totalShots += shots;
+                totalHeadshots += p.stats.headshots;
+
+                const myTeam = p.team.toLowerCase();
+                const hasWon = match.teams[myTeam].has_won;
+                if (hasWon) totalWins++;
+                lastGames.push(hasWon ? 'W' : 'L');
+
+                if (p.assets.agent.small) {
+                    const img = p.assets.agent.small;
+                    if (!agentsPlayed[img]) agentsPlayed[img] = { count: 0, img };
+                    agentsPlayed[img].count++;
+                }
+            }
+        });
+
+        const matchesCount = data.matches.length;
+        const sortedAgents = Object.values(agentsPlayed).sort((a, b) => b.count - a.count);
+
+        return {
+            kd: (totalDeaths > 0 ? (totalKills / totalDeaths) : totalKills).toFixed(2),
+            winRate: ((totalWins / matchesCount) * 100).toFixed(0),
+            hs: (totalShots > 0 ? ((totalHeadshots / totalShots) * 100) : 0).toFixed(1),
+            avgScore: (totalScore / matchesCount).toFixed(0),
+            lastGames,
+            mainAgentImg: sortedAgents.length > 0 ? sortedAgents[0].img : null,
+            rankImg: data.mmr_history?.[0]?.images?.small,
+            peakRank: data.mmr_life?.highest_rank?.patched_tier || "Unknown",
+            peakSeason: data.mmr_life?.highest_rank?.season || ""
+        };
+    };
+
+    const stats = calculateStats();
+    
+    // Couleur du rang
+    const rankColor = rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-amber-600' : 'text-slate-600';
+    const borderColor = rank === 1 ? 'border-yellow-500/30' : 'border-slate-800';
+
     return (
-        <div className={`flex flex-col items-center group cursor-pointer ${isFirst ? 'order-1 z-10' : rank === 2 ? 'order-2' : 'order-3'}`} onClick={() => onClick(player)}>
-            <div className="relative transition-transform duration-300 group-hover:-translate-y-4">
-                {isFirst && <Crown size={48} className="absolute -top-16 left-1/2 -translate-x-1/2 text-yellow-500 fill-yellow-500 animate-bounce"/>}
-                <div className={`${isFirst ? 'w-56 h-56' : 'w-40 h-40'} relative z-10 drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)]`}>
-                    <PodiumCharacter path={`/characters/${player.username}.png`} alt={player.username} />
+        <div 
+            onClick={onToggle}
+            className={`
+                relative bg-slate-900/60 backdrop-blur-md border ${borderColor} rounded-3xl overflow-hidden cursor-pointer transition-all duration-300 group
+                ${isExpanded ? 'bg-slate-900 ring-1 ring-indigo-500/50 shadow-2xl scale-[1.01]' : 'hover:bg-slate-900/80'}
+            `}
+        >
+            {/* --- HEADER --- */}
+            <div className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+                
+                <div className="flex items-center gap-6">
+                    {/* RANG # */}
+                    <div className={`text-4xl md:text-5xl font-black ${rankColor} w-12 text-center opacity-80`}>
+                        #{rank}
+                    </div>
+
+                    {/* AVATAR + INFO */}
+                    <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-2xl bg-slate-800 border-2 border-slate-700 overflow-hidden relative shadow-lg">
+                            <img 
+                                src={player.avatar_url || '/characters/default.png'} 
+                                className="w-full h-full object-cover"
+                                alt={player.username}
+                            />
+                        </div>
+                        <div>
+                            <h3 className="text-2xl font-bold text-white group-hover:text-indigo-400 transition flex items-center gap-2">
+                                {player.username}
+                                {rank === 1 && <Trophy size={18} className="text-yellow-500 fill-yellow-500"/>}
+                            </h3>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs bg-slate-950 text-slate-400 px-2 py-0.5 rounded border border-slate-800 font-mono">
+                                    {player.riot_id || 'NO ID'}
+                                </span>
+                                {stats?.peakRank && stats.peakRank !== "Unknown" && (
+                                    <span className="text-[10px] text-yellow-500 flex items-center gap-1 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
+                                        <Star size={8} fill="currentColor"/> Peak: {stats.peakRank}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* STATS RAPIDES (Visible fermé) */}
+                <div className="flex items-center justify-between md:justify-end gap-8 flex-1">
+                    {stats ? (
+                        <div className="flex gap-6 text-center">
+                            <div>
+                                <p className="text-[10px] text-slate-500 uppercase font-bold">K/D</p>
+                                <p className={`font-mono font-bold text-lg ${parseFloat(stats.kd) >= 1 ? 'text-green-400' : 'text-red-400'}`}>{stats.kd}</p>
+                            </div>
+                            <div className="hidden sm:block">
+                                <p className="text-[10px] text-slate-500 uppercase font-bold">Win %</p>
+                                <p className="font-mono font-bold text-lg text-white">{stats.winRate}%</p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-xs text-slate-600 italic">No Match Data</div>
+                    )}
+
+                    {/* RANG OFFICIEL */}
+                    <div className="flex items-center gap-4 text-right">
+                        <div>
+                            <p className={`text-xl font-black uppercase ${
+                                player.valo_rank.includes('Radiant') ? 'text-yellow-400 drop-shadow-md' : 
+                                player.valo_rank.includes('Immortal') ? 'text-[#FF4655]' : 'text-white'
+                            }`}>
+                                {player.valo_rank}
+                            </p>
+                            <p className="text-sm font-bold text-indigo-400">{player.valo_rr} RR</p>
+                        </div>
+                        {stats?.rankImg && <img src={stats.rankImg} className="w-10 h-10"/>}
+                        
+                        <div className={`p-2 rounded-full transition ${isExpanded ? 'bg-indigo-500 text-white rotate-180' : 'bg-slate-800 text-slate-500'}`}>
+                            <ChevronDown size={20}/>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div className={`bg-gradient-to-t from-slate-900 ${isFirst ? 'to-slate-800 border-yellow-500 h-56' : rank === 2 ? 'to-slate-800 border-slate-500 h-40' : 'to-slate-800 border-amber-700 h-32'} border-t-4 w-40 md:w-52 rounded-t-2xl flex flex-col items-center pt-4 relative mt-[-20px]`}>
-                <span className={`text-6xl font-black select-none ${isFirst ? 'text-yellow-500/20' : 'text-slate-600/30'}`}>{rank}</span>
-                <div className="absolute bottom-4 flex flex-col items-center">
-                    <span className={`font-bold ${isFirst ? 'text-yellow-400' : 'text-white'}`}>{player.username}</span>
-                    <span className="text-[10px] text-slate-500 uppercase tracking-widest">{player.valo_rank}</span>
-                </div>
+
+            {/* --- IMAGE 3D DE FOND --- */}
+            <div className="absolute -right-6 -bottom-6 h-[160%] w-72 hidden lg:block opacity-10 group-hover:opacity-30 transition-opacity pointer-events-none mix-blend-overlay">
+                <img 
+                    src={`/characters/${player.username}.png`}
+                    className="w-full h-full object-contain"
+                    onError={(e) => e.currentTarget.style.display = 'none'}
+                />
             </div>
+
+            {/* --- DETAILS (EXPANDED) --- */}
+            {isExpanded && stats && (
+                <div className="border-t border-white/5 bg-black/30 p-6 md:p-8 animate-in slide-in-from-top-2 relative z-20">
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <StatBox label="Headshot %" value={`${stats.hs}%`} color="text-yellow-400" icon={<Skull size={16}/>} />
+                        <StatBox label="Avg Score" value={stats.avgScore} color="text-white" icon={<Activity size={16}/>} />
+                        <StatBox label="Peak Season" value={stats.peakSeason.toUpperCase()} color="text-slate-400" icon={<Trophy size={16}/>} />
+                        <div className="bg-slate-900/60 p-4 rounded-2xl border border-white/5 flex flex-col justify-center items-center">
+                            <span className="text-[10px] text-slate-500 uppercase font-bold mb-1">Recent Form</span>
+                            <div className="flex gap-1">
+                                {stats.lastGames.slice(0, 5).map((res, i) => (
+                                    <div key={i} className={`w-2 h-8 rounded-full ${res === 'W' ? 'bg-green-500' : 'bg-red-500/50'}`}></div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="flex justify-end">
+                        <Link href={`/profile/${player.username}`}>
+                            <button className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition flex items-center gap-2 shadow-lg shadow-indigo-500/20">
+                                View Full Analysis
+                            </button>
+                        </Link>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
 
-function PlayerDetails({ player, modal = false }: any) {
+// --- PETIT COMPOSANT HELPER ---
+function StatBox({ label, value, color, icon }: any) {
     return (
-        <div className={`${modal ? '' : 'border-t border-white/5 bg-black/20 p-6'}`}>
-            <div className="grid grid-cols-2 gap-4">
-                <StatBox label="K/D Ratio" value={player.valo_kd} color="text-green-400" />
-                <StatBox label="HS %" value={`${player.valo_hs_percent || 0}%`} color="text-yellow-400" />
-                <StatBox label="Role" value={player.valo_main_role || 'Flex'} color="text-white" />
-                <StatBox label="Agent" value={player.valo_main_agent || '?'} color="text-indigo-400" />
+        <div className="bg-slate-900/60 p-4 rounded-2xl border border-white/5 flex flex-col gap-1 shadow-inner">
+            <div className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-2 mb-1">
+                {icon} {label}
             </div>
-            <div className="mt-6 text-center">
-                <Link href={`/profile/${player.username}`} className="w-full block">
-                    <button className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2">
-                        <User size={18}/> View Profile
-                    </button>
-                </Link>
+            <div className={`text-xl md:text-2xl font-black font-mono tracking-tight ${color}`}>
+                {value}
             </div>
-        </div>
-    );
-}
-
-function StatBox({ label, value, color }: any) {
-    return (
-        <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col items-center justify-center gap-1">
-            <div className="text-[10px] text-slate-500 uppercase font-bold">{label}</div>
-            <div className={`text-lg font-bold font-mono ${color}`}>{value}</div>
         </div>
     );
 }
