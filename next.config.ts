@@ -4,13 +4,9 @@ const nextConfig: NextConfig = {
   // Keep the default behavior (no trailing slash),
   // but ensure the slash-variant of the Discord endpoint does NOT redirect.
   async rewrites() {
-    return [
-      {
-        source: "/api/interactions/",
-        destination: "/api/interactions",
-      },
-    ];
+    return [{ source: "/api/interactions/", destination: "/api/interactions" }];
   },
+
 
   images: {
     remotePatterns: [
