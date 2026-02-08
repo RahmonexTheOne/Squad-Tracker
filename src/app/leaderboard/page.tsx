@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import LeaderboardUI from '@/components/LeaderboardUI';
 import { getValorantStats } from '@/lib/valorant';
+import { getLeagueStats } from '@/lib/league'; // 👈 IMPORT THIS
 
 // Helper pour le tri
 const RANK_VALUES: Record<string, number> = {
@@ -55,23 +56,32 @@ export default async function LeaderboardPage() {
   }
 
   // 🔥 RÉCUPÉRATION MASSIVE DES DONNÉES (Stats complètes pour chaque joueur)
-  // On utilise Promise.all pour charger tout le monde en parallèle
   const leaderboardData = await Promise.all(
     squadProfiles.map(async (profile) => {
-        let valoData = null;
         
-        // Si le joueur a un Riot ID, on va chercher ses vrais matchs
-        if (profile.riot_id && profile.riot_id.includes('#')) {
-            const [name, tag] = profile.riot_id.split('#');
+        const riotId = profile.riot_id;
+        let valoData = null;
+        let leagueData = null; // 👈 Init League Data variable
+        
+        if (riotId && riotId.includes('#')) {
+            const [name, tag] = riotId.split('#');
+            
+            // --- A. GET VALORANT STATS ---
             try {
-                // On utilise ta fonction getValorantStats qui ramène Matchs + MMR + Account
                 valoData = await getValorantStats(name, tag);
             } catch (e) {
-                console.error(`Erreur stats pour ${profile.username}`, e);
+                console.error(`Erreur Valorant stats pour ${profile.username}`, e);
+            }
+
+            // --- B. GET LEAGUE STATS (THIS WAS MISSING) ---
+            try {
+                leagueData = await getLeagueStats(name, tag);
+            } catch (e) {
+                console.error(`Erreur League stats pour ${profile.username}`, e);
             }
         }
 
-        // On détermine le rang actuel (Live > DB)
+        // On détermine le rang actuel Valorant (Live > DB)
         let currentRank = profile.valo_rank || "Unranked";
         let currentRR = profile.valo_rr || 0;
 
@@ -82,14 +92,18 @@ export default async function LeaderboardPage() {
 
         return {
             ...profile,
+            // Valorant Data
             valo_rank: currentRank,
             valo_rr: currentRR,
-            fullStats: valoData, // On passe TOUTES les données (matchs inclus) au composant Client
+            fullStats: valoData, 
+            
+            // League Data (This is what LeaderboardUI needs to display the League tab)
+            league_stats: leagueData 
         };
     })
   );
 
-  // Tri par rang
+  // Tri par rang (Default sort logic, UI handles specific tab sorting)
   const sortedLeaderboard = leaderboardData.sort((a, b) => {
       const scoreA = getRankScore(a.valo_rank, a.valo_rr);
       const scoreB = getRankScore(b.valo_rank, b.valo_rr);
