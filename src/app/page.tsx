@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import SquadInviteBanner from '@/components/Dashboard/SquadInviteBanner';
+import { getLeagueStats } from '@/lib/league'; 
 import { 
   LayoutDashboard, Users, Trophy, Activity, Crown, 
   ArrowUpRight, Clock, PlusCircle 
@@ -49,13 +50,12 @@ export default async function Dashboard() {
 
   const { data: { user } } = await supabase.auth.getUser();
   
-  let currentUserProfile = null;
+  let currentUserProfile: any = null;
   let squadProfiles: any[] = [];
   let pendingNotifications: any[] = [];
 
-  // --- LOGIC START ---
+  // --- 1. USER & SQUAD FETCHING ---
   if (user) {
-    // 1. Get MY Profile
     const { data: myProfile } = await supabase
         .from('profiles')
         .select('*')
@@ -65,8 +65,6 @@ export default async function Dashboard() {
     currentUserProfile = myProfile;
     
     if(myProfile) {
-        // 2. FETCH NOTIFICATIONS (Invitations + Requests)
-        
         // A. Invites sent TO me
         const { data: invitations } = await supabase
           .from('squad_invitations')
@@ -91,7 +89,7 @@ export default async function Dashboard() {
             }
         }
 
-        // 3. SQUAD LOGIC
+        // C. Squad Members
         if (myProfile.squad_id) {
             const { data: members } = await supabase
                 .from('profiles')
@@ -104,7 +102,8 @@ export default async function Dashboard() {
     }
   }
 
-  // 4. Valorant API Prep
+  // --- 2. API PREP (VALORANT & LEAGUE) ---
+  
   const squadMembers: SquadMember[] = squadProfiles
     .filter((p: any) => p.riot_id) 
     .map((p: any) => ({
@@ -114,40 +113,97 @@ export default async function Dashboard() {
         avatarUrl: p.avatar_url || '/characters/default.png'
     }));
 
-  const squadMMR = await getSquadMMRHistory(squadMembers);
+  // Fetch Valorant Data
+  const valoHistory = await getSquadMMRHistory(squadMembers);
 
-  // 5. Rankings & Activity logic
-  const rankings = squadMMR.map(player => {
-    const latest = player.data[0];
+  // Fetch League Data & Merge (With the fixes we made)
+  const finalSquadData = await Promise.all(squadProfiles.map(async (profile: any) => {
+      const riotId = profile.riot_id;
+      const valoEntry = valoHistory.find(v => v.username === profile.username);
+      let leagueDataForChart: any[] = [];
+
+      if (riotId && riotId.includes('#')) {
+          const [name, tag] = riotId.split('#');
+          try {
+              const leagueStats = await getLeagueStats(name, tag);
+              
+              if (leagueStats && leagueStats.matches) {
+                  // FILTER: Only Ranked Games (Solo/Duo & Flex)
+                  const rankedMatches = leagueStats.matches.filter((m: any) => 
+                      m.info.queueId === 420 || m.info.queueId === 440
+                  );
+
+                  if (rankedMatches.length > 0) {
+                      // Rank Image Construction
+                      let rankImage = "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/unranked.png";
+                      let currentTier = "UNRANKED";
+                      let currentRank = "";
+                      let currentLP = 0;
+
+                      if (leagueStats.rank && leagueStats.rank.tier && leagueStats.rank.tier !== "UNRANKED") {
+                          currentTier = leagueStats.rank.tier;
+                          currentRank = leagueStats.rank.rank;
+                          currentLP = leagueStats.rank.lp;
+                          rankImage = `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-emblem/emblem-${currentTier.toLowerCase()}.png`;
+                      }
+
+                      leagueDataForChart = rankedMatches.map((m: any) => ({
+                          tier: currentTier, 
+                          rank: currentRank,
+                          lp: currentLP,
+                          rank_img: rankImage,
+                          date: m.info.gameCreation,
+                          queue: m.info.queueId === 420 ? "Solo/Duo" : "Flex"
+                      }));
+                  }
+              }
+          } catch (e) {
+              console.error(`League Error for ${profile.username}:`, e);
+          }
+      }
+
+      return {
+          id: profile.id,
+          username: profile.username,
+          riot_id: profile.riot_id,
+          avatar_url: profile.avatar_url,
+          data: valoEntry ? valoEntry.data : [],
+          league_data: leagueDataForChart
+      };
+  }));
+
+  // --- 3. RANKINGS & ACTIVITY LOGIC ---
+  const rankings = finalSquadData.map((player: any) => {
+    const latest = player.data?.[0];
     const currentRR = latest ? latest.ranking_in_tier : 0;
     const currentTier = latest ? latest.currenttier : 0;
     const score = (currentTier * 100) + currentRR;
-    const memberInfo = squadMembers.find(m => m.username === player.username);
+    
     return {
       username: player.username,
       tierName: latest ? latest.currenttierpatched : "Unranked",
       rr: currentRR,
       score,
-      avatar: memberInfo?.avatarUrl,
+      avatar: player.avatar_url,
       img: latest?.images?.small, 
       characterPath: `/characters/${player.username}.png`
     };
   }).sort((a, b) => b.score - a.score); 
 
   const recentActivity: ActivityItem[] = [];
-  squadMMR.forEach(player => {
-    for (let i = 0; i < player.data.length - 1; i++) {
-        const currentMatch = player.data[i];
-        const prevMatch = player.data[i+1];
-        if (currentMatch.currenttier > prevMatch.currenttier) {
-            recentActivity.push({
-                username: player.username,
-                type: 'RANK_UP',
-                oldRank: prevMatch.currenttierpatched,
-                newRank: currentMatch.currenttierpatched,
-                date: new Date(currentMatch.date_raw * 1000),
-                tierImg: currentMatch.images?.small
-            });
+  finalSquadData.forEach((player: any) => {
+    if(player.data) {
+        for (let i = 0; i < player.data.length - 1; i++) {
+            if (player.data[i].currenttier > player.data[i+1].currenttier) {
+                recentActivity.push({
+                    username: player.username,
+                    type: 'RANK_UP',
+                    oldRank: player.data[i+1].currenttierpatched,
+                    newRank: player.data[i].currenttierpatched,
+                    date: new Date(player.data[i].date_raw * 1000),
+                    tierImg: player.data[i].images?.small
+                });
+            }
         }
     }
   });
@@ -160,6 +216,7 @@ export default async function Dashboard() {
       
       <main className="md:ml-20 lg:ml-64 p-6 lg:p-12">
         
+        {/* HEADER */}
         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
                 <h1 className="text-4xl font-black text-white mb-2 flex items-center gap-3">
@@ -176,20 +233,16 @@ export default async function Dashboard() {
             </Link>
         </div>
 
-        {/* --- NOTIFICATIONS SECTION --- */}
+        {/* NOTIFICATIONS */}
         <div className="space-y-4 mb-8">
             {currentUserProfile && !currentUserProfile.discord_id && <DiscordBanner />}
-            
-            {/* Fix: We only render the banner if user.id exists to satisfy TypeScript */}
+            {/* The notifications are here! */}
             {pendingNotifications.length > 0 && user?.id && (
-                <SquadInviteBanner 
-                    notifications={pendingNotifications} 
-                    userId={user.id} 
-                />
+                <SquadInviteBanner notifications={pendingNotifications} userId={user.id} />
             )}
         </div>
 
-        {/* --- LEADERBOARD PODIUM --- */}
+        {/* --- LEADERBOARD PODIUM (Restored Style) --- */}
         {rankings.length > 0 ? (
             <div className="mb-12">
                 <div className="flex items-center gap-2 mb-6 justify-center md:justify-start">
@@ -198,6 +251,7 @@ export default async function Dashboard() {
                 </div>
                 
                 <div className="flex flex-col md:flex-row items-end justify-center gap-4 md:gap-8 h-auto md:h-96 pt-10">
+                    {/* 2nd Place */}
                     {rankings[1] && (
                         <div className="order-2 md:order-1 flex flex-col items-center animate-in slide-in-from-bottom-8 duration-700 delay-100">
                              <div className="relative mb-2">
@@ -215,6 +269,7 @@ export default async function Dashboard() {
                         </div>
                     )}
 
+                    {/* 1st Place */}
                     {rankings[0] && (
                         <div className="order-1 md:order-2 flex flex-col items-center z-10 animate-in slide-in-from-bottom-12 duration-700">
                              <div className="relative mb-2">
@@ -223,6 +278,7 @@ export default async function Dashboard() {
                                 <div className="absolute -top-8 left-1/2 -translate-x-1/2 flex flex-col items-center w-full whitespace-nowrap">
                                     <span className="font-bold text-yellow-400 text-xl drop-shadow-md">{rankings[0].username}</span>
                                     <div className="flex items-center gap-1 text-xs text-black font-bold bg-yellow-500 px-2 py-0.5 rounded shadow-lg">
+                                        {/* RR Display is BACK here */}
                                         <img src={rankings[0].img} className="w-3 h-3"/> {rankings[0].tierName} ({rankings[0].rr} RR)
                                     </div>
                                 </div>
@@ -234,6 +290,7 @@ export default async function Dashboard() {
                         </div>
                     )}
 
+                    {/* 3rd Place */}
                     {rankings[2] && (
                         <div className="order-3 flex flex-col items-center animate-in slide-in-from-bottom-4 duration-700 delay-200">
                              <div className="relative mb-2">
@@ -267,8 +324,8 @@ export default async function Dashboard() {
         {/* --- CHARTS & ACTIVITY --- */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div className="xl:col-span-2 space-y-6">
-                {squadMMR.length > 0 ? (
-                    <PerformanceChart mmrData={squadMMR} />
+                {finalSquadData.length > 0 ? (
+                    <PerformanceChart mmrData={finalSquadData} />
                 ) : (
                     <div className="h-[300px] bg-slate-900/30 rounded-3xl border border-slate-800 border-dashed flex items-center justify-center text-slate-500">
                         <Activity className="mb-2 mr-2 opacity-50"/> 
